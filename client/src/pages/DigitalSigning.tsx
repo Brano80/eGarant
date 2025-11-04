@@ -307,7 +307,7 @@ export default function DigitalSigning() {
                   </div>
                 </div>
                 <div className="flex gap-3 justify-center mt-6">
-                  <Button variant="outline" onClick={() => setLocation('/my-contracts')} data-testid="button-view-contracts">
+                  <Button variant="outline" onClick={() => setLocation('/moje-zmluvy')} data-testid="button-view-contracts">
                     Zobraziť moje zmluvy
                   </Button>
                   <Button onClick={() => setLocation('/virtual-office')} data-testid="button-back-office">

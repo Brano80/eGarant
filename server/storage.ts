@@ -326,6 +326,50 @@ export class MemStorage implements IStorage {
     this.userMandates.set(mandate2Id, mandate2);
 
     console.log('[SEED] Created ARIAN s.r.o. with Petra Ambroz as Konateľ');
+    // Create DIGITAL NOTARY s.r.o. (mock company used in ORSR mock responses)
+    const companyDigitalNotaryId = "company-digital-notary";
+    const companyDigitalNotary: Company = {
+      id: companyDigitalNotaryId,
+      ico: "36723246",
+      dic: null,
+      icDph: null,
+      nazov: "DIGITAL NOTARY s.r.o.",
+      sidloUlica: "Dunajská",
+      sidloCislo: "12",
+      sidloMesto: "Bratislava",
+      sidloPsc: "81101",
+      registracnySud: "Okresný súd Bratislava I",
+      cisloVlozky: "12345/B",
+      datumZapisu: "2019-07-01",
+      pravnaForma: "Spoločnosť s ručením obmedzeným",
+      stat: "SK",
+      stav: "active",
+      lastVerifiedAt: new Date(),
+      enforceTwoFactorAuth: false,
+      createdAt: new Date("2019-07-01"),
+      updatedAt: new Date()
+    };
+    this.companies.set(companyDigitalNotaryId, companyDigitalNotary);
+
+    // Create mandate for Ján Nováček for DIGITAL NOTARY (mock)
+    const mandateDigitalNotaryId = "mandate-jan-digital-notary";
+    const mandateDigitalNotary: UserCompanyMandate = {
+      id: mandateDigitalNotaryId,
+      userId: mockUserId,
+      companyId: companyDigitalNotaryId,
+      rola: "Konateľ",
+      rozsahOpravneni: "samostatne",
+      platnyOd: "2019-07-01",
+      platnyDo: null,
+      zdrojOverenia: "OR SK Mock",
+      stav: "active",
+      isVerifiedByKep: false,
+      createdAt: new Date("2019-07-01"),
+      updatedAt: new Date()
+    };
+    this.userMandates.set(mandateDigitalNotaryId, mandateDigitalNotary);
+
+    console.log('[SEED] Created DIGITAL NOTARY s.r.o. and mandate for Ján Nováček');
     // Create third company - Tekmain SpA (Chilean company for Andres Elgueta)
     const company3Id = "company-tekmain";
     const company3: Company = {

@@ -61,7 +61,7 @@ const personalNavItems: NavItem[] = [
   {
     label: "Moje zmluvy",
     icon: FileText,
-    path: "/my-contracts",
+    path: "/moje-zmluvy",
   },
   {
     label: "Moje e-dokumenty",
@@ -85,7 +85,7 @@ const companyNavItems: NavItem[] = [
   {
     label: "Firemné zmluvy",
     icon: FileText,
-    path: "/my-contracts",
+    path: "/moje-zmluvy",
   },
   {
     label: "E-dokumenty",

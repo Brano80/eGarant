@@ -8,10 +8,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Loader2 } from "lucide-react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { QUERY_KEYS } from "@/lib/queryKeys"; // ensure we import the centralized keys
+import { apiRequest } from "@/lib/queryClient";
+import { QUERY_KEYS as queryKeys } from "@/lib/queryKeys"; // ensure we import the centralized keys
 import type { VirtualOffice } from "@shared/schema";
 
 interface VirtualOfficeEnriched extends VirtualOffice {
@@ -53,15 +53,18 @@ export default function VirtualOfficeListPage() {
   const [officeName, setOfficeName] = useState('');
 
   // Get current user data with context
-  const { data: userData } = useQuery<CurrentUserResponse>({
+  const { data: userData, isLoading: isUserLoading } = useQuery<CurrentUserResponse>({
     queryKey: ['/api/current-user'],
   });
 
   // Fetch virtual offices for the current user
-  const { data: offices = [], isLoading } = useQuery<VirtualOfficeEnriched[]>({
-    queryKey: [QUERY_KEYS.virtualOffices()],
+  const { data: offices, isLoading: isOfficesLoading } = useQuery<VirtualOfficeEnriched[]>({
+    queryKey: queryKeys.virtualOffices(),
     enabled: !!currentUser,
   });
+
+  // React Query client hook
+  const queryClient = useQueryClient();
 
   // Create virtual office mutation
   const createOfficeMutation = useMutation({
@@ -70,7 +73,8 @@ export default function VirtualOfficeListPage() {
       return response.json();
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.virtualOffices() });
+      // invalidate virtual offices so list refreshes
+      queryClient.invalidateQueries({ queryKey: queryKeys.virtualOffices() });
       setShowCreateDialog(false);
       setOfficeName('');
       // Navigate to detail
@@ -121,58 +125,83 @@ export default function VirtualOfficeListPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {/* Krok 1: Čakáme na používateľa ALEBO na kancelárie (ktoré čakajú na používateľa) */}
+          {(isUserLoading || isOfficesLoading) ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          ) : offices.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground mb-4">Zatiaľ nemáte žiadne virtuálne kancelárie</p>
-              <Button onClick={() => setShowCreateDialog(true)} data-testid="button-create-first">
-                <Plus className="mr-2 h-4 w-4" />
-                Vytvoriť prvú kanceláriu
-              </Button>
-            </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Názov</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Účastníci</TableHead>
-                  <TableHead>Dokumenty</TableHead>
-                  <TableHead>Vytvorené</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {offices.map((office) => {
-                  const statusDisplay = getStatusDisplay(office.status);
-                  const participantsCount = office.participants?.length || 0;
-                  const documentsCount = office.documents?.length || 0;
-                  
-                  return (
-                    <TableRow
-                      key={office.id}
-                      className="cursor-pointer hover-elevate"
-                      onClick={() => setLocation(`/virtual-office/${office.id}`)}
-                      data-testid={`row-office-${office.id}`}
-                    >
-                      <TableCell className="font-medium">{office.name}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary" className={statusDisplay.className}>
-                          {statusDisplay.text}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{participantsCount}</TableCell>
-                      <TableCell>{documentsCount}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {new Date(office.createdAt).toLocaleDateString('sk-SK')}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+            /* Krok 2: Oba dotazy sú hotové. Teraz skontrolujeme, či máme dáta. */
+            offices && offices.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground mb-4">Zatiaľ nemáte žiadne virtuálne kancelárie</p>
+                <Button onClick={() => setShowCreateDialog(true)} data-testid="button-create-first">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Vytvoriť prvú kanceláriu
+                </Button>
+              </div>
+            ) : (
+              /* Krok 3: Máme dáta, zobrazíme tabuľku */
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Názov</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Účastníci</TableHead>
+                    <TableHead>Dokumenty</TableHead>
+                    <TableHead>Vytvorené</TableHead>
+                    <TableHead>Doložka</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {offices?.map((office) => {
+                    const statusDisplay = getStatusDisplay(office.status);
+                    const participantsCount = office.participants?.length || 0;
+                    const documentsCount = office.documents?.length || 0;
+                    const completedDocument = office.documents?.find(d => d.status === 'completed');
+                    
+                    return (
+                      <TableRow
+                        key={office.id}
+                        className="cursor-pointer hover-elevate"
+                        onClick={() => setLocation(`/virtual-office/${office.id}`)}
+                        data-testid={`row-office-${office.id}`}
+                      >
+                        <TableCell className="font-medium">{office.name}</TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className={statusDisplay.className}>
+                            {statusDisplay.text}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{participantsCount}</TableCell>
+                        <TableCell>{documentsCount}</TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {new Date(office.createdAt).toLocaleDateString('sk-SK')}
+                        </TableCell>
+                        <TableCell>
+                          {/* Zobrazíme tlačidlo, len ak je status 'completed' A existuje dokončený dokument */}
+                          {office.status === 'completed' && completedDocument ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation(); 
+                                // PRESMERUJEME NA NOVÚ STRÁNKU DOLOŽKY:
+                                setLocation(`/attestation/${completedDocument.id}`);
+                              }}
+                            >
+                              Zobraziť
+                            </Button>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )
           )}
         </CardContent>
       </Card>
