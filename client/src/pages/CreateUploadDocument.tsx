@@ -51,8 +51,8 @@ export default function CreateUploadDocument() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.contracts(currentUser?.email || '') });
-      setLocation('/my-contracts');
+  queryClient.invalidateQueries({ queryKey: QUERY_KEYS.contracts(currentUser?.email || '') });
+  setLocation('/moje-zmluvy');
     },
   });
 

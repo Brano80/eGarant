@@ -119,11 +119,10 @@ export default function PersonalDashboard() {
   const virtualOfficesCount = virtualOffices?.length || 0;
   const activeCount = virtualOffices?.filter(o => o.status === 'active').length || 0;
   const completedCount = virtualOffices?.filter(o => o.status === 'completed').length || 0;
-  // Documents derived from virtual offices
-  const allDocuments = virtualOffices?.flatMap(o => o.documents || []) || [];
-  const pendingDocumentsCount = allDocuments.filter(d => d.status === 'pending').length;
-  const signedDocumentsCount = allDocuments.filter(d => d.status === 'completed').length;
-  const documentsCount = allDocuments.length || 0;
+  // Documents derived from contracts (correct source)
+  const pendingDocumentsCount = contracts?.filter(d => d.status === 'pending').length || 0;
+  const signedDocumentsCount = contracts?.filter(d => d.status === 'completed').length || 0;
+  const documentsCount = contracts?.length || 0;
 
   // Accept mandate mutation
   const acceptMandateMutation = useMutation({

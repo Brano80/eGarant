@@ -150,6 +150,7 @@ export default function VirtualOfficeListPage() {
                     <TableHead>Účastníci</TableHead>
                     <TableHead>Dokumenty</TableHead>
                     <TableHead>Vytvorené</TableHead>
+                    <TableHead>Doložka</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -157,6 +158,7 @@ export default function VirtualOfficeListPage() {
                     const statusDisplay = getStatusDisplay(office.status);
                     const participantsCount = office.participants?.length || 0;
                     const documentsCount = office.documents?.length || 0;
+                    const completedDocument = office.documents?.find(d => d.status === 'completed');
                     
                     return (
                       <TableRow
@@ -175,6 +177,24 @@ export default function VirtualOfficeListPage() {
                         <TableCell>{documentsCount}</TableCell>
                         <TableCell className="text-muted-foreground">
                           {new Date(office.createdAt).toLocaleDateString('sk-SK')}
+                        </TableCell>
+                        <TableCell>
+                          {/* Zobrazíme tlačidlo, len ak je status 'completed' A existuje dokončený dokument */}
+                          {office.status === 'completed' && completedDocument ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation(); 
+                                // PRESMERUJEME NA NOVÚ STRÁNKU DOLOŽKY:
+                                setLocation(`/attestation/${completedDocument.id}`);
+                              }}
+                            >
+                              Zobraziť
+                            </Button>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
                         </TableCell>
                       </TableRow>
                     );
