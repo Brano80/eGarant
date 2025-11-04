@@ -119,7 +119,11 @@ export default function PersonalDashboard() {
   const virtualOfficesCount = virtualOffices?.length || 0;
   const activeCount = virtualOffices?.filter(o => o.status === 'active').length || 0;
   const completedCount = virtualOffices?.filter(o => o.status === 'completed').length || 0;
-  const documentsCount = 0;
+  // Documents derived from virtual offices
+  const allDocuments = virtualOffices?.flatMap(o => o.documents || []) || [];
+  const pendingDocumentsCount = allDocuments.filter(d => d.status === 'pending').length;
+  const signedDocumentsCount = allDocuments.filter(d => d.status === 'completed').length;
+  const documentsCount = allDocuments.length || 0;
 
   // Accept mandate mutation
   const acceptMandateMutation = useMutation({
@@ -217,10 +221,10 @@ export default function PersonalDashboard() {
             <CardTitle className="text-sm font-medium">Moje zmluvy</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{contractsCount}</div>
-            <p className="text-xs text-muted-foreground">Celkový počet zmlúv</p>
-          </CardContent>
+            <CardContent>
+              <div className="text-2xl font-bold">{`${pendingDocumentsCount}/${signedDocumentsCount}`}</div>
+              <p className="text-xs text-muted-foreground">Na podpis / Podpísané</p>
+            </CardContent>
         </Card>
 
         <Card 
