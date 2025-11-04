@@ -214,8 +214,8 @@ export default function PersonalDashboard() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card 
           className="cursor-pointer transition-all hover-elevate active-elevate-2"
-          onClick={() => setLocation('/my-contracts')}
           data-testid="card-my-contracts"
+          onClick={() => setLocation('/moje-zmluvy')}
         >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Moje zmluvy</CardTitle>
