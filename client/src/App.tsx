@@ -29,6 +29,7 @@ import VerifyDocument from "@/pages/VerifyDocument";
 import VirtualOfficeListPage from "@/pages/VirtualOfficeListPage";
 import VirtualOfficeDetailPage from "@/pages/VirtualOfficeDetailPage";
 import DigitalSigning from "@/pages/DigitalSigning";
+import ContractListPage from "@/pages/ContractListPage";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -133,6 +134,11 @@ function Router() {
       <Route path="/virtual-office">
         <PrivateRoute>
           <VirtualOfficeListPage />
+        </PrivateRoute>
+      </Route>
+      <Route path="/moje-zmluvy">
+        <PrivateRoute>
+          <ContractListPage />
         </PrivateRoute>
       </Route>
       <Route path="/digital-signing/:type">
