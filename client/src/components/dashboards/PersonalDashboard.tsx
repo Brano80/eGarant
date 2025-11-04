@@ -117,6 +117,8 @@ export default function PersonalDashboard() {
   // Calculate counts
   const contractsCount = contracts?.length || 0;
   const virtualOfficesCount = virtualOffices?.length || 0;
+  const activeCount = virtualOffices?.filter(o => o.status === 'active').length || 0;
+  const completedCount = virtualOffices?.filter(o => o.status === 'completed').length || 0;
   const documentsCount = 0;
 
   // Accept mandate mutation
@@ -231,8 +233,8 @@ export default function PersonalDashboard() {
             <Briefcase className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{virtualOfficesCount}</div>
-            <p className="text-xs text-muted-foreground">Aktívne kancelárie</p>
+            <div className="text-2xl font-bold">{`${activeCount}/${completedCount}`}</div>
+            <p className="text-xs text-muted-foreground">Aktívne / Dokončené</p>
           </CardContent>
         </Card>
 
