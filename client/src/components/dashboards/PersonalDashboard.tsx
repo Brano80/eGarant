@@ -3,11 +3,11 @@ import { FileText, Shield, Briefcase, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useLocation } from "wouter";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { QUERY_KEYS } from "@/lib/queryKeys";
 import type { Contract, VirtualOffice, VirtualOfficeParticipant } from "@shared/schema";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CheckCircle2, XCircle } from "lucide-react";
@@ -59,6 +59,7 @@ export default function PersonalDashboard() {
   const [, setLocation] = useLocation();
   const { data: currentUser, activeContext } = useCurrentUser();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   // Fetch current user data including mandates
   const { data: userData, isLoading: isLoadingUser } = useQuery<CurrentUserResponse>({
@@ -116,7 +117,12 @@ export default function PersonalDashboard() {
   // Calculate counts
   const contractsCount = contracts?.length || 0;
   const virtualOfficesCount = virtualOffices?.length || 0;
-  const documentsCount = 0;
+  const activeCount = virtualOffices?.filter(o => o.status === 'active').length || 0;
+  const completedCount = virtualOffices?.filter(o => o.status === 'completed').length || 0;
+  // Documents derived from contracts (correct source)
+  const pendingDocumentsCount = contracts?.filter(d => d.status === 'pending').length || 0;
+  const signedDocumentsCount = contracts?.filter(d => d.status === 'completed').length || 0;
+  const documentsCount = contracts?.length || 0;
 
   // Accept mandate mutation
   const acceptMandateMutation = useMutation({
@@ -163,16 +169,23 @@ export default function PersonalDashboard() {
   // Accept VK invitation mutation
   const acceptVKInvitationMutation = useMutation({
     mutationFn: async ({ officeId, participantId }: { officeId: string; participantId: string }) => {
-      const response = await apiRequest('PATCH', `/api/virtual-offices/${officeId}/participants/${participantId}`, {
+      return await apiRequest('PATCH', `/api/virtual-offices/${officeId}/participants/${participantId}`, {
         status: 'ACCEPTED'
       });
-      return { response, officeId };
     },
-    onSuccess: ({ officeId }) => {
+    onSuccess: () => {
+      toast({ title: "Pozvánka prijatá", description: "Boli ste pridaný do virtuálnej kancelárie." });
+      // Znovu načítame dáta pre dashboard a current user
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.virtualOffices() });
-      setLocation(`/virtual-office/${officeId}`);
+      queryClient.invalidateQueries({ queryKey: ['/api/current-user'] });
     },
+    onError: (error: any) => {
+      console.error("Chyba pri prijatí VK pozvánky:", error);
+      toast({ title: "Chyba", description: error.message || "Nepodarilo sa prijať pozvánku.", variant: "destructive" });
+    }
   });
+  const acceptVKInvitation = ({ officeId, participantId }: { officeId: string; participantId: string }) =>
+    acceptVKInvitationMutation.mutate({ officeId, participantId });
 
   // Reject VK invitation mutation
   const rejectVKInvitationMutation = useMutation({
@@ -200,17 +213,17 @@ export default function PersonalDashboard() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card 
           className="cursor-pointer transition-all hover-elevate active-elevate-2"
-          onClick={() => setLocation('/my-contracts')}
           data-testid="card-my-contracts"
+          onClick={() => setLocation('/moje-zmluvy')}
         >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Moje zmluvy</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{contractsCount}</div>
-            <p className="text-xs text-muted-foreground">Celkový počet zmlúv</p>
-          </CardContent>
+            <CardContent>
+              <div className="text-2xl font-bold">{`${pendingDocumentsCount}/${signedDocumentsCount}`}</div>
+              <p className="text-xs text-muted-foreground">Na podpis / Podpísané</p>
+            </CardContent>
         </Card>
 
         <Card 
@@ -223,8 +236,8 @@ export default function PersonalDashboard() {
             <Briefcase className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{virtualOfficesCount}</div>
-            <p className="text-xs text-muted-foreground">Aktívne kancelárie</p>
+            <div className="text-2xl font-bold">{`${activeCount}/${completedCount}`}</div>
+            <p className="text-xs text-muted-foreground">Aktívne / Dokončené</p>
           </CardContent>
         </Card>
 
@@ -409,11 +422,11 @@ export default function PersonalDashboard() {
                   <div className="flex gap-2">
                     <Button
                       size="default"
-                      onClick={() => acceptVKInvitationMutation.mutate({
+                      onClick={() => acceptVKInvitation({
                         officeId: invitation.officeId,
                         participantId: invitation.participantId!
                       })}
-                      disabled={acceptVKInvitation.isPending || rejectVKInvitation.isPending}
+                      disabled={acceptVKInvitationMutation.isPending || rejectVKInvitationMutation.isPending}
                       data-testid={`button-accept-vk-${invitation.participantId}`}
                     >
                       <CheckCircle2 className="mr-2 h-4 w-4" />
@@ -426,7 +439,7 @@ export default function PersonalDashboard() {
                         officeId: invitation.officeId,
                         participantId: invitation.participantId!
                       })}
-                      disabled={acceptVKInvitation.isPending || rejectVKInvitation.isPending}
+                      disabled={acceptVKInvitationMutation.isPending || rejectVKInvitationMutation.isPending}
                       data-testid={`button-reject-vk-${invitation.participantId}`}
                     >
                       <XCircle className="mr-2 h-4 w-4" />

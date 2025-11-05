@@ -1081,8 +1081,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // --- KROK 9.2: PRÍPRAVA NA REÁLNE VOLANIE ---
       
-      const MY_PUBLIC_CALLBACK_BASE_URL = "https://hired-island-crossing-fitted.trycloudflare.com"; // TODO: Aktualizuj!
-      const walletResponseCallbackUrl = `${MY_PUBLIC_CALLBACK_BASE_URL}/api/v1/verify-callback`; 
+  const MY_PUBLIC_CALLBACK_BASE_URL = process.env.PUBLIC_CODESPACE_URL || "https://stunning-goldfish-7vwqjqqwxvj4295j-3000.app.github.dev";
+  const walletResponseCallbackUrl = `${MY_PUBLIC_CALLBACK_BASE_URL}/api/v1/verify-callback`; 
       const EUDI_SANDBOX_INITIATE_URL = "https://verifier-backend.eudiw.dev/ui/presentations"; 
 
       // 2. Zostavíme požiadavku (Presentation Definition)
@@ -1125,22 +1125,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
         request_uri_method: "post" // Podľa Krok 10.1
       };
 
-      // 4. Simulácia volania EUDI Sandbox API (fetch)
-      console.log(`[API /verify-mandate] Simulujem volanie na ${EUDI_SANDBOX_INITIATE_URL} s payloadom:`, JSON.stringify(verifierApiPayload, null, 2));
-      
-      // 5. Simulácia odpovede zo Sandboxu
-      const mockVerifierResponse = {
-        transaction_id: transactionId, 
-        request_uri: `${MY_PUBLIC_CALLBACK_BASE_URL}/api/v1/request-object/${requestObjectId}`,
-        request_uri_method: "post"
-      };
-      console.log('[API /verify-mandate] Prijatá (mock) odpoveď z Verifiera:', mockVerifierResponse);
+      // 4-5. Reálne volanie EUDI Sandbox API (fetch)
+      console.log(`[API /verify-mandate] Odosielam požiadavku na ${EUDI_SANDBOX_INITIATE_URL} s payloadom:`, JSON.stringify(verifierApiPayload, null, 2));
 
-      // 6. Vrátime odpoveď nášmu frontendu
+      let verifierResponse: any;
+      try {
+        const response = await fetch(EUDI_SANDBOX_INITIATE_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(verifierApiPayload),
+        });
+
+        if (!response.ok) {
+          const errorBody = await response.text();
+          console.error(`[API /verify-mandate] Chyba z EUDI Sandbox API (${response.status}):`, errorBody);
+          throw new Error(`EUDI Sandbox API vrátil chybu ${response.status}: ${errorBody}`);
+        }
+
+        verifierResponse = await response.json();
+        console.log('[API /verify-mandate] Prijatá reálna odpoveď z EUDI Verifiera:', verifierResponse);
+
+      } catch (fetchError: any) {
+        console.error('[API /verify-mandate] Chyba pri volaní EUDI Sandbox (fetch):', fetchError);
+        return res.status(500).json({ error: 'Failed to connect to EUDI Sandbox', message: fetchError.message });
+      }
+
+      // 6. Vrátime odpoveď nášmu frontendu (používame reálnu odpoveď verifierResponse)
       res.status(200).json({
-        transactionId: mockVerifierResponse.transaction_id,
-        requestUri: mockVerifierResponse.request_uri, 
-        requestUriMethod: mockVerifierResponse.request_uri_method
+        transactionId: verifierResponse.transaction_id,
+        requestUri: verifierResponse.request_uri,
+        requestUriMethod: verifierResponse.request_uri_method,
+        localTransactionId: transactionId,
       });
 
     } catch (error: any) {

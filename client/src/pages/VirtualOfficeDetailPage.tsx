@@ -362,11 +362,11 @@ export default function VirtualOfficeDetailPage() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => setLocation(`/my-contracts?vkId=${id}`)}
+              onClick={() => setLocation(`/moje-zmluvy?add-to-vk=${id}`)}
               data-testid="button-upload-document"
             >
               <Upload className="mr-2 h-4 w-4" />
-              Nahrať dokument
+              Pridať existujúcu zmluvu
             </Button>
           </div>
         </CardHeader>

@@ -29,7 +29,10 @@ import VerifyDocument from "@/pages/VerifyDocument";
 import VirtualOfficeListPage from "@/pages/VirtualOfficeListPage";
 import VirtualOfficeDetailPage from "@/pages/VirtualOfficeDetailPage";
 import DigitalSigning from "@/pages/DigitalSigning";
+import MandateCheckDemo from "@/pages/MandateCheckDemo";
+import { ContractListPage } from "./pages/ContractListPage";
 import NotFound from "@/pages/not-found";
+import { AttestationPage } from './pages/AttestationPage';
 
 function Router() {
   return (
@@ -50,9 +53,9 @@ function Router() {
           <MyDocuments />
         </PrivateRoute>
       </Route>
-      <Route path="/my-contracts">
+      <Route path="/moje-zmluvy">
         <PrivateRoute>
-          <MyContracts />
+          <ContractListPage />
         </PrivateRoute>
       </Route>
       <Route path="/companies">
@@ -130,14 +133,25 @@ function Router() {
           <VirtualOfficeDetailPage />
         </PrivateRoute>
       </Route>
+      <Route path="/attestation/:documentId">
+        <PrivateRoute>
+          <AttestationPage />
+        </PrivateRoute>
+      </Route>
       <Route path="/virtual-office">
         <PrivateRoute>
           <VirtualOfficeListPage />
         </PrivateRoute>
       </Route>
+      
       <Route path="/digital-signing/:type">
         <PrivateRoute>
           <DigitalSigning />
+        </PrivateRoute>
+      </Route>
+      <Route path="/mandate-check-demo">
+        <PrivateRoute>
+          <MandateCheckDemo />
         </PrivateRoute>
       </Route>
       <Route component={NotFound} />
