@@ -55,6 +55,15 @@ interface CurrentUserResponse {
   activeContext: string | null;
 }
 
+interface DashboardSummary {
+  pendingTasks: number;
+  contractsToSign: number;
+  signedContracts: number;
+  openOffices: number;
+  completedOffices: number;
+  totalAttestations: number;
+}
+
 export default function PersonalDashboard() {
   const [, setLocation] = useLocation();
   const { data: currentUser, activeContext } = useCurrentUser();
@@ -75,6 +84,12 @@ export default function PersonalDashboard() {
   // Fetch virtual offices for the current user (default to empty array)
   const { data: virtualOffices = [] } = useQuery<VirtualOfficeEnriched[]>({
     queryKey: QUERY_KEYS.virtualOffices(),
+    enabled: !!currentUser,
+  });
+
+  // Fetch dashboard summary (includes totalAttestations)
+  const { data: summary } = useQuery<DashboardSummary>({
+    queryKey: ['/api/dashboard/summary'],
     enabled: !!currentUser,
   });
 
@@ -106,7 +121,7 @@ export default function PersonalDashboard() {
       vk.documents?.some(
         (doc) =>
           doc.signatures?.some(
-            (sig) =>
+            (sig: any) =>
               sig.participantId ===
                 vk.participants?.find((p) => p.userId === currentUser?.id)?.id &&
               sig.status === 'PENDING'
@@ -251,7 +266,7 @@ export default function PersonalDashboard() {
             <Shield className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{documentsCount}</div>
+            <div className="text-2xl font-bold">{summary?.totalAttestations ?? 0}</div>
             <p className="text-xs text-muted-foreground">Moje e-dokumenty</p>
           </CardContent>
         </Card>

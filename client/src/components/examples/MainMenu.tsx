@@ -9,6 +9,8 @@ export default function MainMenuExample() {
       onMyContracts={() => console.log('My contracts')}
       onMyDocuments={() => console.log('My documents')}
       onVirtualOffice={() => console.log('Virtual office')}
+      onBack={() => console.log('Back')}
+      onLogoff={() => console.log('Logoff')}
     />
   );
 }

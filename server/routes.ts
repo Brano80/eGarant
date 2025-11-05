@@ -2,12 +2,12 @@ import express, { type Express, type Request, type Response, type NextFunction }
 import { createServer, type Server } from "http";
 import passport from "passport";
 import multer from "multer";
-import { storage, listApiKeys } from "./storage"; // Pridali sme listApiKeys
-import { insertVirtualOfficeSchema, insertContractSchema, VerificationStatus, apiKeys } from "@shared/schema"; // Pridané
+import { storage, listApiKeys, type InsertSavedAttestation, type SavedAttestation, type VerificationStatus } from "./storage"; // Pridali sme typy pre uložené doložky
+import { insertVirtualOfficeSchema, insertContractSchema, apiKeys, contracts } from "@shared/schema"; // Pridané
 import type { User } from "./auth";
 import { authenticateApiKey } from './middleware'; 
 import { setupVite } from "./vite";
-import { serveStatic } from "./static";
+import { serveStatic } from "./vite";
 import { log } from "./utils";
 import { db } from "./db"; // Pridané
 import { eq, desc } from "drizzle-orm"; // Pridané
@@ -57,8 +57,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       id: "mock123",
       name: "Ján Nováček",
       email: "jan.novacek@example.sk",
-      username: "jan.novacek@example.sk",
-      password: "mock-password-hash"
     };
 
     req.login(mockUser, (err) => {
@@ -76,8 +74,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       id: "mock456",
       name: "Petra Ambroz",
       email: "petra.ambroz@example.sk",
-      username: "petra.ambroz@example.sk",
-      password: "mock-password-hash"
     };
     req.login(mockUser, (err) => {
       if (err) return res.status(500).json({ error: "Login failed" });
@@ -90,8 +86,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       id: "mock789",
       name: "Andres Elgueta",
       email: "andres.elgueta@tekmain.cl",
-      username: "andres.elgueta@tekmain.cl",
-      password: "mock-password-hash"
     };
     req.login(mockUser, (err) => {
       if (err) return res.status(500).json({ error: "Login failed" });
@@ -182,6 +176,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     req.session.activeContext = contextId;
     res.json({ success: true, contextId });
+  });
+
+  // --- eGarant: Saved Attestations (Archive) ---
+  app.get("/api/attestations", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      const userId = (req.user as User).id;
+
+      const attestations = await storage.getSavedAttestationsByUserId(userId);
+
+      res.status(200).json(attestations);
+    } catch (error) {
+      console.error('[API] Error fetching saved attestations:', error);
+      res.status(500).json({ error: "Failed to fetch saved attestations" });
+    }
   });
 
   // --- eGarant: Virtual Office routes ---
@@ -629,6 +640,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (allSigned) {
         await storage.updateVirtualOfficeDocument(documentId, { status: 'completed' });
+        // --- Začiatok logiky pre uloženie doložky ---
+        try {
+          // 1. Získame všetkých účastníkov dokumentu (cez ich podpisy)
+          const participantIds = allSignatures.map(sig => sig.participantId);
+          const uniqueParticipantIds = Array.from(new Set(participantIds));
+
+          const documentForTitle = await storage.getVirtualOfficeDocument(documentId);
+          const contractForTitle = documentForTitle ? await storage.getContract(documentForTitle.contractId) : null;
+          const documentTitle = contractForTitle?.title || 'Neznámy dokument';
+
+          // 2. Uložíme doložku pre KAŽDÉHO účastníka, ktorý podpísal
+          for (const participantId of uniqueParticipantIds) {
+            try {
+              const participant = await storage.getVirtualOfficeParticipant(participantId);
+              if (participant) {
+                await storage.createSavedAttestation({
+                  userId: participant.userId,
+                  documentId: documentId,
+                  documentTitle: documentTitle
+                });
+              }
+            } catch (attestationError) {
+              console.error(`[API] Failed to save attestation for participant ${participantId}`, attestationError);
+              // Pokračujeme ďalej, aj keď sa jedna doložka neuloží
+            }
+          }
+        } catch (err) {
+          console.error('[API] Error while creating saved attestations:', err);
+        }
+        // --- Koniec logiky pre uloženie doložky ---
         
         const allDocuments = await storage.getVirtualOfficeDocuments(document.virtualOfficeId);
         const allDocumentsCompleted = allDocuments.every(doc => doc.status === 'completed');

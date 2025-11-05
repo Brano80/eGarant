@@ -19,6 +19,8 @@ import {
   type InsertAuditLog,
   type ApiKey,
 } from "@shared/schema";
+// Re-export saved attestation types for convenience in routes
+export type { InsertSavedAttestation, SavedAttestation } from "@shared/schema";
 import { randomUUID, randomBytes, pbkdf2, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import crypto from "crypto";
@@ -27,7 +29,7 @@ import crypto from "crypto";
 // Drizzle DB + apiKeys table + helpers
 import { db } from "./db";
 // <-- ADDED
-import { apiKeys } from "@shared/schema"; // <-- ADDED
+import { apiKeys, savedAttestations } from "@shared/schema"; // <-- ADDED
 import { desc, eq } from "drizzle-orm";
 // <-- ADDED
 
@@ -162,10 +164,37 @@ export interface IStorage {
   // Reset all data to seed state (for testing purposes)
   resetToSeedData(): Promise<void>;
 
+  // Dashboard summary
+  getDashboardSummary(userId: string): Promise<DashboardSummary>;
+
+  // Saved Attestations (archive of user-saved attestations)
+  createSavedAttestation(data: {
+    userId: string;
+    documentId: string;
+    documentTitle: string;
+  }): Promise<void>;
+
+  getSavedAttestationsByUserId(userId: string): Promise<Array<{
+    id: string;
+    documentId: string;
+    documentTitle: string;
+    createdAt: string;
+  }>>;
+
   // Verification Transaction Management (KROK 8.3.1)
   createVerificationTransaction(companyIco: string): Promise<VerificationTransaction>;
   getVerificationTransaction(id: string): Promise<VerificationTransaction | undefined>;
   updateVerificationTransactionStatus(id: string, status: VerificationStatus, resultData: Record<string, any> | null): Promise<VerificationTransaction | undefined>;
+}
+
+// Dashboard summary type returned to frontend
+export interface DashboardSummary {
+  pendingTasks: number;
+  contractsToSign: number;
+  signedContracts: number;
+  openOffices: number;
+  completedOffices: number;
+  totalAttestations: number;
 }
 
 export class MemStorage implements IStorage {
@@ -179,6 +208,8 @@ export class MemStorage implements IStorage {
   private userMandates: Map<string, UserCompanyMandate>;
   private auditLogs: Map<string, AuditLog>;
   private apiKeys: Map<string, ApiKey>;
+  // Saved attestations (archív používateľských doložiek)
+  private savedAttestations: Map<string, (typeof savedAttestations.$inferSelect)>;
   // KROK 8.3.1: Pridanie novej Map pre transakcie
   private verificationTransactions: Map<string, VerificationTransaction>;
 
@@ -195,6 +226,7 @@ export class MemStorage implements IStorage {
     this.apiKeys = new Map();
     // KROK 8.3.1: Inicializácia novej Map
     this.verificationTransactions = new Map();
+  this.savedAttestations = new Map();
   }
 
   seedExampleData() {
@@ -206,7 +238,10 @@ export class MemStorage implements IStorage {
       username: "jan.novacek@example.sk",
       password: "mock-password-hash",
       name: "Ján Nováček",
-      email: "jan.novacek@example.sk"
+      email: "jan.novacek@example.sk",
+      isTwoFactorAuthEnabled: false,
+      twoFactorAuthSecret: null,
+      twoFactorAuthMethod: null,
     };
     this.users.set(mockUserId, mockUser);
 
@@ -217,7 +252,10 @@ export class MemStorage implements IStorage {
       username: "petra.ambroz@example.sk",
       password: "mock-password-hash-2",
       name: "Petra Ambroz",
-      email: "petra.ambroz@example.sk"
+      email: "petra.ambroz@example.sk",
+      isTwoFactorAuthEnabled: false,
+      twoFactorAuthSecret: null,
+      twoFactorAuthMethod: null,
     };
     this.users.set(mockUser2Id, mockUser2);
 
@@ -228,7 +266,10 @@ export class MemStorage implements IStorage {
       username: "andres.elgueta@tekmain.cl",
       password: "mock-password-hash-3",
       name: "Andres Elgueta",
-      email: "andres.elgueta@tekmain.cl"
+      email: "andres.elgueta@tekmain.cl",
+      isTwoFactorAuthEnabled: false,
+      twoFactorAuthSecret: null,
+      twoFactorAuthMethod: null,
     };
     this.users.set(mockUser3Id, mockUser3);
 
@@ -583,11 +624,20 @@ export class MemStorage implements IStorage {
     const participants = Array.from(this.virtualOfficeParticipants.values()).filter(
       (p) => p.virtualOfficeId === virtualOfficeId
     );
-    return participants.map((participant) => {
+    // Použijeme .reduce, aby sme bezpečne odfiltrovali účastníkov,
+    // ktorým chýba prepojený používateľ, bez toho, aby sme spadli.
+    return participants.reduce((acc, participant) => {
       const user = this.users.get(participant.userId);
-      if (!user) throw new Error(`User ${participant.userId} not found`);
-      return { ...participant, user };
-    });
+
+      // Pridáme účastníka do zoznamu, IBA AK sme našli používateľa
+      if (user) {
+        acc.push({ ...participant, user });
+      } else {
+        // Inak ticho ignorujeme (alebo logujeme chybu)
+        console.warn(`[storage] Participant ${participant.id} references non-existent user ${participant.userId}. Skipping.`);
+      }
+      return acc;
+    }, [] as Array<VirtualOfficeParticipant & { user: User }>);
   }
 
   async updateVirtualOfficeParticipant(id: string, updates: Partial<VirtualOfficeParticipant>): Promise<VirtualOfficeParticipant | undefined> {
@@ -624,11 +674,20 @@ export class MemStorage implements IStorage {
     const documents = Array.from(this.virtualOfficeDocuments.values()).filter(
       (d) => d.virtualOfficeId === virtualOfficeId
     );
-    return documents.map((document) => {
+    // Použijeme .reduce, aby sme bezpečne odfiltrovali dokumenty,
+    // ktorým chýba prepojený kontrakt, bez toho, aby sme spadli.
+    return documents.reduce((acc, document) => {
       const contract = this.contracts.get(document.contractId);
-      if (!contract) throw new Error(`Contract ${document.contractId} not found`);
-      return { ...document, contract };
-    });
+
+      // Pridáme dokument do zoznamu, IBA AK sme našli kontrakt
+      if (contract) {
+        acc.push({ ...document, contract });
+      } else {
+        // Inak ticho ignorujeme (alebo logujeme chybu)
+        console.warn(`[storage] Document ${document.id} references non-existent contract ${document.contractId}. Skipping.`);
+      }
+      return acc;
+    }, [] as Array<VirtualOfficeDocument & { contract: Contract }>);
   }
 
   async getVirtualOfficeDocumentsByContractId(contractId: string): Promise<VirtualOfficeDocument[]> {
@@ -946,6 +1005,8 @@ export class MemStorage implements IStorage {
     this.apiKeys.clear();
     // KROK 8.3.1: Vyčistenie novej Map
     this.verificationTransactions.clear();
+  // Saved attestations
+  this.savedAttestations.clear();
 
     // Re-seed the example data
     this.seedExampleData();
@@ -995,6 +1056,99 @@ export class MemStorage implements IStorage {
     this.verificationTransactions.set(id, updated);
     console.log(`[STORAGE] Transakcia ${id} aktualizovaná na stav: ${status}`);
     return updated;
+  }
+
+  // --- Dashboard summary ---
+  async getDashboardSummary(userId: string): Promise<DashboardSummary> {
+    // 1) Participants for the user
+    const participants = Array.from(this.virtualOfficeParticipants.values()).filter(p => p.userId === userId);
+    const participantIds = participants.map(p => p.id);
+
+    // 2) Pending tasks: signatures assigned to user's participant entries that are still PENDING
+    const pendingTasks = Array.from(this.virtualOfficeSignatures.values()).filter(s => participantIds.includes(s.participantId) && s.status === 'PENDING').length;
+
+    // 3) Contracts to sign: distinct contracts where user has pending signatures
+    const contractIdsToSign = new Set<string>();
+    for (const sig of Array.from(this.virtualOfficeSignatures.values())) {
+      if (participantIds.includes(sig.participantId) && sig.status === 'PENDING') {
+        const doc = this.virtualOfficeDocuments.get(sig.virtualOfficeDocumentId);
+        if (doc) contractIdsToSign.add(doc.contractId);
+      }
+    }
+    const contractsToSign = contractIdsToSign.size;
+
+    // 4) Signed contracts: distinct contracts where at least one document for that contract is fully signed and involves the user
+    const signedContractsSet = new Set<string>();
+    for (const doc of Array.from(this.virtualOfficeDocuments.values())) {
+      const docSigs = Array.from(this.virtualOfficeSignatures.values()).filter(s => s.virtualOfficeDocumentId === doc.id);
+      if (docSigs.length > 0 && docSigs.every(s => s.status === 'SIGNED')) {
+        if (docSigs.some(s => participantIds.includes(s.participantId))) {
+          signedContractsSet.add(doc.contractId);
+        }
+      }
+    }
+    const signedContracts = signedContractsSet.size;
+
+    // 5) Open vs completed offices for the user
+    const openOfficesSet = new Set<string>();
+    const completedOfficesSet = new Set<string>();
+    for (const office of Array.from(this.virtualOffices.values())) {
+      const hasParticipant = Array.from(this.virtualOfficeParticipants.values()).some(p => p.virtualOfficeId === office.id && p.userId === userId);
+      if (!hasParticipant) continue;
+      if (office.status === 'completed') completedOfficesSet.add(office.id);
+      else openOfficesSet.add(office.id);
+    }
+    const openOffices = openOfficesSet.size;
+    const completedOffices = completedOfficesSet.size;
+
+    // 6) Vypočítaj počet uložených doložiek (pre daného používateľa)
+    const allUserAttestations = Array.from(this.savedAttestations.values()).filter((attest) => attest.userId === userId);
+    const totalAttestations = allUserAttestations.length;
+
+    return {
+      pendingTasks,
+      contractsToSign,
+      signedContracts,
+      openOffices,
+      completedOffices,
+      totalAttestations,
+    };
+  }
+
+  // --- Saved Attestations (MemStorage) ---
+  async createSavedAttestation(data: {
+    userId: string;
+    documentId: string;
+    documentTitle: string;
+  }): Promise<void> {
+    const newId = `attest_${randomUUID()}`;
+    const newAttestation: (typeof savedAttestations.$inferSelect) = {
+      id: newId,
+      userId: data.userId,
+      documentId: data.documentId,
+      documentTitle: data.documentTitle,
+      createdAt: new Date(),
+    };
+    this.savedAttestations.set(newAttestation.id, newAttestation);
+    console.log(`[MemStorage] Saved Attestation created: ${newAttestation.id} for user ${data.userId}`);
+  }
+
+  async getSavedAttestationsByUserId(userId: string): Promise<Array<{
+    id: string;
+    documentId: string;
+    documentTitle: string;
+    createdAt: string;
+  }>> {
+    const userAttestations = Array.from(this.savedAttestations.values())
+      .filter((attest) => attest.userId === userId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    return userAttestations.map((attest) => ({
+      id: attest.id,
+      documentId: attest.documentId,
+      documentTitle: attest.documentTitle,
+      createdAt: attest.createdAt.toISOString(),
+    }));
   }
 }
 

@@ -1,7 +1,8 @@
-import { sql } from "drizzle-orm";
+import { sql, relations } from "drizzle-orm";
 import { pgTable, text, varchar, timestamp, date, boolean, pgEnum } from "drizzle-orm/pg-core"; // Ensure boolean is imported
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { nanoid } from "nanoid";
 
 // --- Users Table (Updated) ---
 export const users = pgTable("users", {
@@ -257,3 +258,34 @@ export const insertApiKeySchema = createInsertSchema(apiKeys).omit({
   lastUsedAt: true,
 });
 export type InsertApiKey = z.infer<typeof insertApiKeySchema>;
+
+// --- Saved Attestations ---
+
+export const savedAttestations = pgTable('saved_attestations', {
+  id: varchar('id').primaryKey().$defaultFn(() => `attest_${nanoid()}`),
+
+  userId: varchar('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  documentId: varchar('document_id').notNull().references(() => virtualOfficeDocuments.id, { onDelete: 'cascade' }),
+  documentTitle: text('document_title').notNull(),
+
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const savedAttestationsRelations = relations(savedAttestations, ({ one }) => ({
+  user: one(users, {
+    fields: [savedAttestations.userId],
+    references: [users.id],
+  }),
+  document: one(virtualOfficeDocuments, {
+    fields: [savedAttestations.documentId],
+    references: [virtualOfficeDocuments.id],
+  }),
+}));
+
+// Insert schema + types for saved attestations
+export const insertSavedAttestationSchema = createInsertSchema(savedAttestations).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertSavedAttestation = z.infer<typeof insertSavedAttestationSchema>;
+export type SavedAttestation = typeof savedAttestations.$inferSelect;
