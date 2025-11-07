@@ -50,9 +50,18 @@ export default function CreateUploadDocument() {
         ownerEmail: currentUser?.email || '',
       });
     },
-    onSuccess: () => {
-  queryClient.invalidateQueries({ queryKey: QUERY_KEYS.contracts(currentUser?.email || '') });
-  setLocation('/moje-zmluvy');
+    onSuccess: async () => {
+      // Získame aktuálny kontext
+      const activeContext = currentUser?.activeContext || null;
+
+      // 1. Vynútime OKAMŽITÉ znovunačítanie zmlúv
+      await queryClient.refetchQueries({ queryKey: QUERY_KEYS.contracts(activeContext) });
+
+      // 2. Vynútime OKAMŽITÉ znovunačítanie dashboardu
+      await queryClient.refetchQueries({ queryKey: ['/api/dashboard/summary'] });
+
+      // 3. AŽ POTOM presmerujeme
+      setLocation('/moje-zmluvy');
     },
   });
 

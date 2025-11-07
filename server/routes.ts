@@ -835,10 +835,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/contracts", async (req, res) => {
     try {
-      if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      // 1. Získame ID používateľa a aktívny kontext
       const userId = (req.user as User).id;
       const activeContext = req.session.activeContext || 'personal';
+
+      // 2. Zavoláme NOVÚ opravenú funkciu
       const contracts = await storage.getContractsByContext(userId, activeContext);
+
       res.json(contracts);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch contracts" });

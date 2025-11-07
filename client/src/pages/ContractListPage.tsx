@@ -24,11 +24,17 @@ export function ContractListPage() {
   const vkIdToAddTo = searchParams.get('add-to-vk');
   // (no debug logging)
 
-  // 1. Načítame zmluvy pre aktuálne prihláseného používateľa
+  // Získame aj activeContext
+  const activeContext = currentUser?.activeContext || null;
+
+  // 1. Načítame zmluvy pre aktuálne prihláseného používateľa v závislosti od kontextu
   const { data: contracts, isLoading } = useQuery<Contract[]>({
-    queryKey: QUERY_KEYS.contracts(currentUser?.email || ''),
-    queryFn: () =>
-      apiRequest('GET', `/api/contracts?ownerEmail=${encodeURIComponent(currentUser!.email || '')}`).then(res => res.json()),
+    // Použijeme nový kľúč závislý od kontextu
+    queryKey: QUERY_KEYS.contracts(activeContext),
+    // queryFn: volanie na endpoint bez query param (server použije session.activeContext)
+    queryFn: () => apiRequest('GET', '/api/contracts').then(res => res.json()),
+    // Dotaz sa má spustiť, hneď ako máme načítaného používateľa
+    // (a teda vieme, či je jeho kontext 'null' alebo ID mandátu)
     enabled: !!currentUser,
   });
 

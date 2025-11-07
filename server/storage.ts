@@ -529,27 +529,33 @@ export class MemStorage implements IStorage {
   }
 
   async getContractsByContext(userId: string, activeContext: string): Promise<Contract[]> {
-    // Get user email for personal context
+    // Získame email používateľa pre prípad osobného kontextu
     const user = await this.getUser(userId);
     const userEmail = user?.email;
 
-    // 1) Resolve company owner ID from activeContext (if any)
+    // 1. Určíme ID firemného vlastníka podľa kontextu
     let finalOwnerCompanyId: string | null = null;
     if (activeContext !== 'personal') {
       const activeMandate = await this.getUserMandate(activeContext);
-      if (activeMandate) finalOwnerCompanyId = activeMandate.companyId;
+      if (activeMandate) {
+        finalOwnerCompanyId = activeMandate.companyId;
+      }
     }
 
-    // 2) Filter contracts in memory
+    // 2. Filtrujeme všetky zmluvy
     const allContracts = Array.from(this.contracts.values());
 
     if (finalOwnerCompanyId) {
-      // Company context: return contracts owned by the company
-      return allContracts.filter((contract) => contract.ownerCompanyId === finalOwnerCompanyId);
+      // Firemný kontext: Vrátime len zmluvy vlastnené touto firmou
+      return allContracts.filter(
+        (contract) => contract.ownerCompanyId === finalOwnerCompanyId
+      );
     } else {
-      // Personal context: return contracts owned by user's email
-      if (!userEmail) return [];
-      return allContracts.filter((contract) => contract.ownerEmail === userEmail);
+      // Osobný kontext: Vrátime len zmluvy vlastnené týmto používateľom (cez email)
+      if (!userEmail) return []; // Nemalo by nastať, ak je prihlásený
+      return allContracts.filter(
+        (contract) => contract.ownerEmail === userEmail && !contract.ownerCompanyId
+      );
     }
   }
 
