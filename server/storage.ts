@@ -110,13 +110,13 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
 
   getContract(id: string): Promise<Contract | undefined>;
-  getContractsByOwner(ownerEmail: string): Promise<Contract[]>;
+  getContractsByContext(userId: string, activeContext: string): Promise<Contract[]>;
   createContract(contract: InsertContract): Promise<Contract>;
   updateContract(id: string, updates: Partial<Contract>): Promise<Contract | undefined>;
   deleteContract(id: string): Promise<boolean>;
   // Virtual Office methods (updated for new structure)
   getVirtualOffice(id: string): Promise<VirtualOffice | undefined>;
-  getVirtualOfficesByUser(userId: string): Promise<VirtualOffice[]>;
+  getVirtualOfficesByUser(userId: string, activeContext: string): Promise<VirtualOffice[]>;
   createVirtualOffice(office: InsertVirtualOffice): Promise<VirtualOffice>;
   updateVirtualOffice(id: string, updates: Partial<VirtualOffice>): Promise<VirtualOffice | undefined>;
   deleteVirtualOffice(id: string): Promise<boolean>;
@@ -313,6 +313,8 @@ export class MemStorage implements IStorage {
       platnyOd: "2020-01-15",
       platnyDo: null,
       zdrojOverenia: "Czech Business Registry Mock",
+      // invitationContext was added to the schema; seed with null
+      invitationContext: null,
       stav: "active",
       isVerifiedByKep: false,
       createdAt: new Date("2020-01-15"),
@@ -359,6 +361,8 @@ export class MemStorage implements IStorage {
       platnyOd: "2021-05-10",
       platnyDo: null,
       zdrojOverenia: "OR SR Mock",
+      // invitationContext is required by the type
+      invitationContext: null,
       stav: "active",
       isVerifiedByKep: false,
       createdAt: new Date("2021-05-10"),
@@ -403,6 +407,7 @@ export class MemStorage implements IStorage {
       platnyOd: "2019-07-01",
       platnyDo: null,
       zdrojOverenia: "OR SK Mock",
+      invitationContext: null,
       stav: "active",
       isVerifiedByKep: false,
       createdAt: new Date("2019-07-01"),
@@ -448,6 +453,7 @@ export class MemStorage implements IStorage {
       platnyOd: "2022-03-20",
       platnyDo: null,
       zdrojOverenia: "Chilean Business Registry Mock",
+      invitationContext: null,
       stav: "active",
       isVerifiedByKep: false,
       createdAt: new Date("2022-03-20"),
@@ -505,7 +511,14 @@ export class MemStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
-    const user: User = { ...insertUser, id };
+    const user: User = {
+      ...insertUser,
+      id,
+      // ensure 2FA-related fields exist on created User
+      isTwoFactorAuthEnabled: (insertUser as any).isTwoFactorAuthEnabled ?? false,
+      twoFactorAuthSecret: (insertUser as any).twoFactorAuthSecret ?? null,
+      twoFactorAuthMethod: (insertUser as any).twoFactorAuthMethod ?? null,
+    };
     this.users.set(id, user);
     return user;
   }
@@ -515,10 +528,29 @@ export class MemStorage implements IStorage {
     return this.contracts.get(id);
   }
 
-  async getContractsByOwner(ownerEmail: string): Promise<Contract[]> {
-    return Array.from(this.contracts.values()).filter(
-      (contract) => contract.ownerEmail === ownerEmail,
-    );
+  async getContractsByContext(userId: string, activeContext: string): Promise<Contract[]> {
+    // Get user email for personal context
+    const user = await this.getUser(userId);
+    const userEmail = user?.email;
+
+    // 1) Resolve company owner ID from activeContext (if any)
+    let finalOwnerCompanyId: string | null = null;
+    if (activeContext !== 'personal') {
+      const activeMandate = await this.getUserMandate(activeContext);
+      if (activeMandate) finalOwnerCompanyId = activeMandate.companyId;
+    }
+
+    // 2) Filter contracts in memory
+    const allContracts = Array.from(this.contracts.values());
+
+    if (finalOwnerCompanyId) {
+      // Company context: return contracts owned by the company
+      return allContracts.filter((contract) => contract.ownerCompanyId === finalOwnerCompanyId);
+    } else {
+      // Personal context: return contracts owned by user's email
+      if (!userEmail) return [];
+      return allContracts.filter((contract) => contract.ownerEmail === userEmail);
+    }
   }
 
   async createContract(insertContract: InsertContract): Promise<Contract> {
@@ -528,7 +560,9 @@ export class MemStorage implements IStorage {
       status: insertContract.status ??
         'pending',
       id,
-      createdAt: new Date()
+      createdAt: new Date(),
+      ownerEmail: (insertContract as any).ownerEmail ?? null,
+      ownerCompanyId: (insertContract as any).ownerCompanyId ?? null
     };
     this.contracts.set(id, contract);
     return contract;
@@ -560,15 +594,27 @@ export class MemStorage implements IStorage {
     return this.virtualOffices.get(id);
   }
 
-  async getVirtualOfficesByUser(userId: string): Promise<VirtualOffice[]> {
-    // Find all participants for this user
+  async getVirtualOfficesByUser(userId: string, activeContext: string): Promise<VirtualOffice[]> {
+    // 1) Get all offices where the user is a participant
     const participantOfficeIds = Array.from(this.virtualOfficeParticipants.values())
       .filter(p => p.userId === userId)
       .map(p => p.virtualOfficeId);
-    // Return unique virtual offices
-    return Array.from(this.virtualOffices.values()).filter(
+
+    const allUserOffices = Array.from(this.virtualOffices.values()).filter(
       (office) => participantOfficeIds.includes(office.id)
     );
+
+    // 2) Determine owner company id for the provided activeContext
+    let currentOwnerCompanyId: string | null = null;
+    if (activeContext !== 'personal') {
+      const activeMandate = await this.getUserMandate(activeContext);
+      if (activeMandate) currentOwnerCompanyId = activeMandate.companyId;
+    }
+
+    // 3) Filter offices based on ownerCompanyId matching current context
+    const filteredOffices = allUserOffices.filter((office) => office.ownerCompanyId === currentOwnerCompanyId);
+
+    return filteredOffices;
   }
 
   async createVirtualOffice(insertOffice: InsertVirtualOffice): Promise<VirtualOffice> {
@@ -577,6 +623,8 @@ export class MemStorage implements IStorage {
       ...insertOffice,
       status: insertOffice.status ??
         'active',
+      // ownerCompanyId is required on VirtualOffice type (string | null)
+      ownerCompanyId: (insertOffice as any).ownerCompanyId ?? null,
       processType: insertOffice.processType ?? null,
       id,
       createdAt: new Date()
@@ -811,11 +859,15 @@ export class MemStorage implements IStorage {
     const mandates = Array.from(this.userMandates.values()).filter(
       (mandate) => mandate.userId === userId
     );
-    return mandates.map((mandate) => {
+    return mandates.reduce((acc, mandate) => {
       const company = this.companies.get(mandate.companyId);
-      if (!company) throw new Error(`Company ${mandate.companyId} not found`);
-      return { ...mandate, company };
-    });
+      if (company) {
+        acc.push({ ...mandate, company });
+      } else {
+        console.warn(`[storage] Mandate ${mandate.id} references non-existent company ${mandate.companyId}. Skipping.`);
+      }
+      return acc;
+    }, [] as Array<UserCompanyMandate & { company: Company }>);
   }
 
   async getCompanyMandatesByIco(ico: string): Promise<Array<UserCompanyMandate & { user: User }>> {
@@ -829,12 +881,16 @@ export class MemStorage implements IStorage {
     const mandates = Array.from(this.userMandates.values()).filter(
       (mandate) => mandate.companyId === company.id
     );
-    // Enrich with user data
-    return mandates.map((mandate) => {
+    // Enrich with user data, but skip mandates that reference missing users
+    return mandates.reduce((acc, mandate) => {
       const user = this.users.get(mandate.userId);
-      if (!user) throw new Error(`User ${mandate.userId} not found`);
-      return { ...mandate, user };
-    });
+      if (user) {
+        acc.push({ ...mandate, user });
+      } else {
+        console.warn(`[storage] Mandate ${mandate.id} references non-existent user ${mandate.userId}. Skipping.`);
+      }
+      return acc;
+    }, [] as Array<UserCompanyMandate & { user: User }>);
   }
 
   async createUserMandate(insertMandate: InsertUserCompanyMandate): Promise<UserCompanyMandate> {
@@ -847,6 +903,8 @@ export class MemStorage implements IStorage {
       zdrojOverenia: insertMandate.zdrojOverenia ?? 'OR SR Mock',
       stav: insertMandate.stav ??
         'pending_confirmation',
+      // invitationContext must be present (nullable)
+      invitationContext: (insertMandate as any).invitationContext ?? null,
       isVerifiedByKep: insertMandate.isVerifiedByKep ?? false,
       createdAt: new Date(),
       updatedAt: new Date()
@@ -888,11 +946,15 @@ export class MemStorage implements IStorage {
       .filter((log) => log.companyId === companyId)
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
       .slice(0, limit);
-    return logs.map((log) => {
+    return logs.reduce((acc, log) => {
       const user = this.users.get(log.userId);
-      if (!user) throw new Error(`User ${log.userId} not found`);
-      return { ...log, user };
-    });
+      if (user) {
+        acc.push({ ...log, user });
+      } else {
+        console.warn(`[storage] AuditLog ${log.id} references non-existent user ${log.userId}. Skipping.`);
+      }
+      return acc;
+    }, [] as Array<AuditLog & { user: User }>);
   }
 
   async getAuditLogsByUser(userId: string, limit: number = 100): Promise<Array<AuditLog>> {
@@ -1059,6 +1121,7 @@ export class MemStorage implements IStorage {
   }
 
   // --- Dashboard summary ---
+  // --- FINÁLNA VERZIA (TOTO JE TEST PRE CACHE) ---
   async getDashboardSummary(userId: string): Promise<DashboardSummary> {
     // 1) Participants for the user
     const participants = Array.from(this.virtualOfficeParticipants.values()).filter(p => p.userId === userId);

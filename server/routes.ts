@@ -200,15 +200,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       if (!req.user) return res.status(401).json({ error: "Not authenticated" });
       const userId = (req.user as User).id;
-      const { name, processType, invitations, ownerCompanyId } = req.body;
+      const { name, processType, invitations } = req.body;
       if (!name) return res.status(400).json({ error: "name is required" });
       
       const activeContext = req.session.activeContext || 'personal';
+      // --- ZAČIATOK NOVEJ LOGIKY ---
+      let finalOwnerCompanyId: string | null = null;
+
+      if (activeContext !== 'personal') {
+        // Ak konáme v kontexte firmy, musíme zistiť ID firmy z mandátu
+        const activeMandate = await storage.getUserMandate(activeContext);
+        if (activeMandate) {
+          finalOwnerCompanyId = activeMandate.companyId;
+        } else {
+          // Toto by sa nemalo stať, ak je session platná
+          console.warn(`[API] Používateľ ${userId} má aktívny kontext ${activeContext}, ale mandát nebol nájdený! VK bude vytvorená ako osobná.`);
+        }
+      }
+      // --- KONIEC NOVEJ LOGIKY ---
       
       const office = await storage.createVirtualOffice({
         name,
         createdById: userId,
-        ownerCompanyId,
+        ownerCompanyId: finalOwnerCompanyId,
         processType: processType || null,
         status: 'active'
       });
@@ -340,8 +354,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       if (!req.user) return res.status(401).json({ error: "Not authenticated" });
       
-      const userId = (req.user as User).id;
-      const offices = await storage.getVirtualOfficesByUser(userId);
+  const userId = (req.user as User).id;
+  const activeContext = req.session.activeContext || 'personal';
+  const offices = await storage.getVirtualOfficesByUser(userId, activeContext);
       
       const enrichedOffices = await Promise.all(
         offices.map(async (office) => {
@@ -779,8 +794,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/contracts", async (req, res) => {
     try {
+      // --- ZAČIATOK NOVEJ LOGIKY ---
+      if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+      const userId = (req.user as User).id;
+      const activeContext = req.session.activeContext || 'personal';
+
+      let finalOwnerCompanyId: string | null = null;
+
+      if (activeContext !== 'personal') {
+        const activeMandate = await storage.getUserMandate(activeContext);
+        if (activeMandate) {
+          finalOwnerCompanyId = activeMandate.companyId;
+        } else {
+          console.warn(`[API] Používateľ ${userId} má aktívny kontext ${activeContext}, ale mandát nebol nájdený! Zmluva bude vytvorená ako osobná.`);
+        }
+      }
+      // --- KONIEC NOVEJ LOGIKY ---
+
       const validated = insertContractSchema.parse(req.body);
-      const contract = await storage.createContract(validated);
+      const contract = await storage.createContract({
+        ...validated,
+        ownerCompanyId: finalOwnerCompanyId,
+        ownerEmail: finalOwnerCompanyId ? null : (req.user as User).email,
+      });
       res.json(contract);
     } catch (error) {
       res.status(400).json({ error: "Invalid request data" });
@@ -799,9 +835,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/contracts", async (req, res) => {
     try {
-      const ownerEmail = req.query.ownerEmail as string;
-      if (!ownerEmail) return res.status(400).json({ error: "ownerEmail is required" });
-      const contracts = await storage.getContractsByOwner(ownerEmail);
+      if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+      const userId = (req.user as User).id;
+      const activeContext = req.session.activeContext || 'personal';
+      const contracts = await storage.getContractsByContext(userId, activeContext);
       res.json(contracts);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch contracts" });

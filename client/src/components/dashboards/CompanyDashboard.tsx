@@ -146,7 +146,10 @@ export default function CompanyDashboard({ companyName, ico }: CompanyDashboardP
 
       {/* Quick Stats */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
+        <Card 
+          className="cursor-pointer transition-all hover-elevate active-elevate-2"
+          onClick={() => setLocation('/moje-zmluvy')}
+        >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Firemné zmluvy</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
@@ -172,7 +175,10 @@ export default function CompanyDashboard({ companyName, ico }: CompanyDashboardP
           </CardContent>
         </Card>
 
-        <Card>
+        <Card 
+          className="cursor-pointer transition-all hover-elevate active-elevate-2"
+          onClick={() => setLocation('/my-documents')}
+        >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">E-dokumenty</CardTitle>
             <Shield className="h-4 w-4 text-muted-foreground" />
@@ -183,7 +189,10 @@ export default function CompanyDashboard({ companyName, ico }: CompanyDashboardP
           </CardContent>
         </Card>
 
-        <Card>
+        <Card 
+          className="cursor-pointer transition-all hover-elevate active-elevate-2"
+          onClick={() => window.location.hash = 'pending-tasks'}
+        >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Čakajúce úkony</CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
@@ -273,7 +282,7 @@ export default function CompanyDashboard({ companyName, ico }: CompanyDashboardP
 
       {/* Pending Tasks */}
       {pendingMandates.length > 0 && (
-        <Card>
+        <Card id="pending-tasks">
           <CardHeader>
             <CardTitle>Čakajúce úkony</CardTitle>
             <CardDescription>Pozvánky na firemné mandáty</CardDescription>

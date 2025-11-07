@@ -33,9 +33,10 @@ export const contracts = pgTable("contracts", {
   title: text("title").notNull(),
   type: text("type").notNull(),
   content: text("content").notNull(),
-  ownerEmail: text("owner_email").notNull(),
+  ownerEmail: text("owner_email"),
   status: text("status").notNull().default("pending"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  ownerCompanyId: varchar("owner_company_id").references(() => companies.id, { onDelete: 'set null' }),
 });
 export const insertContractSchema = createInsertSchema(contracts).omit({
   id: true,
@@ -43,6 +44,14 @@ export const insertContractSchema = createInsertSchema(contracts).omit({
 });
 export type InsertContract = z.infer<typeof insertContractSchema>;
 export type Contract = typeof contracts.$inferSelect;
+
+// Relations for contracts
+export const contractsRelations = relations(contracts, ({ one }) => ({
+  company: one(companies, {
+    fields: [contracts.ownerCompanyId],
+    references: [companies.id],
+  }),
+}));
 
 // --- Enums for Virtual Offices ---
 export const participantStatusEnum = pgEnum("participant_status", [
