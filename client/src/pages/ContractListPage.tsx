@@ -15,7 +15,7 @@ import { Link } from 'wouter';
 import { Badge } from '@/components/ui/badge';
 
 export function ContractListPage() {
-  const { data: currentUser } = useCurrentUser();
+  const { data: currentUser, activeContext } = useCurrentUser();
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null);
   const queryClient = useQueryClient();
   // OPRAVA: Čítame priamo z 'window.location.search' pre spoľahlivé čítanie query paramov
@@ -25,12 +25,10 @@ export function ContractListPage() {
   // (no debug logging)
 
   // Získame aj activeContext
-  const activeContext = currentUser?.activeContext || null;
-
   // 1. Načítame zmluvy pre aktuálne prihláseného používateľa v závislosti od kontextu
   const { data: contracts, isLoading } = useQuery<Contract[]>({
-    // Použijeme nový kľúč závislý od kontextu
-    queryKey: QUERY_KEYS.contracts(activeContext),
+    // Použijeme nový kľúč závislý od kontextu (normalizujeme undefined -> null)
+    queryKey: QUERY_KEYS.contracts(activeContext ?? null),
     // queryFn: volanie na endpoint bez query param (server použije session.activeContext)
     queryFn: () => apiRequest('GET', '/api/contracts').then(res => res.json()),
     // Dotaz sa má spustiť, hneď ako máme načítaného používateľa
@@ -149,9 +147,17 @@ function ContractCard({ contract, onPreview, vkIdToAddTo }: { contract: Contract
       const res = await apiRequest('POST', `/api/virtual-offices/${vkIdToAddTo}/documents`, { contractId: contract.id });
       return res.json();
     },
-    onSuccess: () => {
-      if (vkIdToAddTo) queryClient.invalidateQueries({ queryKey: QUERY_KEYS.virtualOffice(vkIdToAddTo) });
-      setLocation(`/virtual-office/${vkIdToAddTo}`);
+    onSuccess: async () => {
+      if (vkIdToAddTo) {
+        // Obnovíme dáta pre VK, do ktorej ideme
+        await queryClient.refetchQueries({ queryKey: QUERY_KEYS.virtualOffice(vkIdToAddTo) });
+
+        // OBNOVÍME AJ DASHBOARD (TOTO JE NOVÁ OPRAVA)
+        await queryClient.refetchQueries({ queryKey: ['/api/dashboard/summary'] });
+
+        // Až potom presmerujeme
+        setLocation(`/virtual-office/${vkIdToAddTo}`);
+      }
     },
     onError: (err: any) => {
       toast({ title: 'Chyba', description: err?.message || 'Nepodarilo sa pridať zmluvu.', variant: 'destructive' });

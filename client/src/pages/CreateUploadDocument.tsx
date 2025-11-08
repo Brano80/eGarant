@@ -13,7 +13,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 export default function CreateUploadDocument() {
   const [, setLocation] = useLocation();
-  const { data: currentUser } = useCurrentUser();
+  const { data: currentUser, activeContext } = useCurrentUser();
 
   const [title, setTitle] = useState('');
   const [fileName, setFileName] = useState('');
@@ -51,11 +51,11 @@ export default function CreateUploadDocument() {
       });
     },
     onSuccess: async () => {
-      // Získame aktuálny kontext
-      const activeContext = currentUser?.activeContext || null;
+  // Získame aktuálny kontext
+  const ctx = activeContext ?? null;
 
       // 1. Vynútime OKAMŽITÉ znovunačítanie zmlúv
-      await queryClient.refetchQueries({ queryKey: QUERY_KEYS.contracts(activeContext) });
+       await queryClient.refetchQueries({ queryKey: QUERY_KEYS.contracts(ctx) });
 
       // 2. Vynútime OKAMŽITÉ znovunačítanie dashboardu
       await queryClient.refetchQueries({ queryKey: ['/api/dashboard/summary'] });

@@ -165,7 +165,7 @@ export interface IStorage {
   resetToSeedData(): Promise<void>;
 
   // Dashboard summary
-  getDashboardSummary(userId: string): Promise<DashboardSummary>;
+  getDashboardSummary(userId: string, activeContext: string): Promise<DashboardSummary>;
 
   // Saved Attestations (archive of user-saved attestations)
   createSavedAttestation(data: {
@@ -1127,62 +1127,101 @@ export class MemStorage implements IStorage {
   }
 
   // --- Dashboard summary ---
-  // --- FINÁLNA VERZIA (TOTO JE TEST PRE CACHE) ---
-  async getDashboardSummary(userId: string): Promise<DashboardSummary> {
-    // 1) Participants for the user
-    const participants = Array.from(this.virtualOfficeParticipants.values()).filter(p => p.userId === userId);
-    const participantIds = participants.map(p => p.id);
+  async getDashboardSummary(userId: string, activeContext: string): Promise<DashboardSummary> {
 
-    // 2) Pending tasks: signatures assigned to user's participant entries that are still PENDING
-    const pendingTasks = Array.from(this.virtualOfficeSignatures.values()).filter(s => participantIds.includes(s.participantId) && s.status === 'PENDING').length;
-
-    // 3) Contracts to sign: distinct contracts where user has pending signatures
-    const contractIdsToSign = new Set<string>();
-    for (const sig of Array.from(this.virtualOfficeSignatures.values())) {
-      if (participantIds.includes(sig.participantId) && sig.status === 'PENDING') {
-        const doc = this.virtualOfficeDocuments.get(sig.virtualOfficeDocumentId);
-        if (doc) contractIdsToSign.add(doc.contractId);
-      }
+  // 1. Určíme ID firemného vlastníka podľa kontextu
+  let currentOwnerCompanyId: string | null = null;
+  if (activeContext !== 'personal') {
+    const activeMandate = await this.getUserMandate(activeContext);
+    if (activeMandate) {
+      currentOwnerCompanyId = activeMandate.companyId;
     }
-    const contractsToSign = contractIdsToSign.size;
-
-    // 4) Signed contracts: distinct contracts where at least one document for that contract is fully signed and involves the user
-    const signedContractsSet = new Set<string>();
-    for (const doc of Array.from(this.virtualOfficeDocuments.values())) {
-      const docSigs = Array.from(this.virtualOfficeSignatures.values()).filter(s => s.virtualOfficeDocumentId === doc.id);
-      if (docSigs.length > 0 && docSigs.every(s => s.status === 'SIGNED')) {
-        if (docSigs.some(s => participantIds.includes(s.participantId))) {
-          signedContractsSet.add(doc.contractId);
-        }
-      }
-    }
-    const signedContracts = signedContractsSet.size;
-
-    // 5) Open vs completed offices for the user
-    const openOfficesSet = new Set<string>();
-    const completedOfficesSet = new Set<string>();
-    for (const office of Array.from(this.virtualOffices.values())) {
-      const hasParticipant = Array.from(this.virtualOfficeParticipants.values()).some(p => p.virtualOfficeId === office.id && p.userId === userId);
-      if (!hasParticipant) continue;
-      if (office.status === 'completed') completedOfficesSet.add(office.id);
-      else openOfficesSet.add(office.id);
-    }
-    const openOffices = openOfficesSet.size;
-    const completedOffices = completedOfficesSet.size;
-
-    // 6) Vypočítaj počet uložených doložiek (pre daného používateľa)
-    const allUserAttestations = Array.from(this.savedAttestations.values()).filter((attest) => attest.userId === userId);
-    const totalAttestations = allUserAttestations.length;
-
-    return {
-      pendingTasks,
-      contractsToSign,
-      signedContracts,
-      openOffices,
-      completedOffices,
-      totalAttestations,
-    };
   }
+
+  // 2. Nájdi VŠETKY záznamy o účasti pre daného používateľa
+  const allUserParticipantRecords = Array.from(
+    this.virtualOfficeParticipants.values()
+  ).filter((p) => p.userId === userId);
+
+  // 3. Nájdi VŠETKY VK, v ktorých je používateľ členom
+  const allUserOfficeIds = new Set(allUserParticipantRecords.map(p => p.virtualOfficeId));
+  const allUserOffices = Array.from(this.virtualOffices.values()).filter(
+    (office) => allUserOfficeIds.has(office.id)
+  );
+
+  // 4. Odfiltrujeme VK, ktoré patria len do AKTUÁLNEHO KONTEXTU
+  // (Toto je kľúčový filter, ktorý minule chýbal alebo bol chybný)
+  const contextOffices = allUserOffices.filter(
+    (office) => office.ownerCompanyId === currentOwnerCompanyId
+  );
+  const contextOfficeIds = new Set(contextOffices.map(o => o.id));
+
+  // 5. Získame ID účastníkov, ktoré patria len do týchto kontextových VK
+  const contextParticipantIds = new Set(
+    allUserParticipantRecords
+      .filter(p => contextOfficeIds.has(p.virtualOfficeId))
+      .map(p => p.id)
+  );
+
+  // 6. Získame VŠETKY podpisy
+  const allSignatures = Array.from(this.virtualOfficeSignatures.values());
+
+  // 7) Počítame UNIKÁTNE zmluvy (na podpis / podpísané) LEN z kontextových podpisov
+
+  const signaturesInContext = allSignatures.filter(s => contextParticipantIds.has(s.participantId));
+  const contractIdsToSign = new Set<string>();
+  const contractIdsSigned = new Set<string>();
+
+  for (const sig of signaturesInContext) {
+    const doc = this.virtualOfficeDocuments.get(sig.virtualOfficeDocumentId);
+    if (!doc) continue; // Dokument pre tento podpis neexistuje
+
+    if (sig.status === 'PENDING') {
+      contractIdsToSign.add(doc.contractId);
+    } else if (sig.status === 'SIGNED') {
+      contractIdsSigned.add(doc.contractId);
+    }
+  }
+
+  // Ak je zmluva v "na podpis", nemôže byť v "podpísané"
+  // (Aj keď iný dokument v tej istej zmluve už mám podpísaný)
+  contractIdsSigned.forEach(id => {
+    if (contractIdsToSign.has(id)) {
+      contractIdsSigned.delete(id);
+    }
+  });
+
+  const contractsToSign = contractIdsToSign.size;
+  const signedContracts = contractIdsSigned.size;
+
+  // 8. Počítame čakajúce úkony (Pozvánky LEN pre tento kontext)
+  const pendingTasks = allUserParticipantRecords.filter(
+    (p) => p.status === 'INVITED' && p.invitationContext === activeContext
+  ).length;
+
+  // 9. Počítame kancelárie (už sú odfiltrované podľa kontextu)
+  const openOffices = contextOffices.filter((vo) => vo.status === 'active').length;
+  const completedOffices = contextOffices.filter((vo) => vo.status === 'completed').length;
+
+  // 10. Počítame doložky (tiež filtrujeme podľa kontextu)
+  const allContextDocuments = Array.from(this.virtualOfficeDocuments.values())
+    .filter(doc => contextOfficeIds.has(doc.virtualOfficeId));
+  const contextDocumentIds = new Set(allContextDocuments.map(d => d.id));
+
+  const totalAttestations = Array.from(this.savedAttestations.values())
+      .filter((attest) => attest.userId === userId && contextDocumentIds.has(attest.documentId))
+      .length;
+
+  // 11. Vrátime výsledok
+  return {
+    pendingTasks,
+    contractsToSign,
+    signedContracts,
+    openOffices,
+    completedOffices,
+    totalAttestations,
+  };
+}
 
   // --- Saved Attestations (MemStorage) ---
   async createSavedAttestation(data: {

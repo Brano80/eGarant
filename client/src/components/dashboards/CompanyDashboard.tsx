@@ -22,6 +22,16 @@ interface VirtualOfficeEnriched extends VirtualOffice {
   documents: any[];
 }
 
+// Pridaj tento interface
+interface DashboardSummary {
+  pendingTasks: number;
+  contractsToSign: number;
+  signedContracts: number;
+  openOffices: number;
+  completedOffices: number;
+  totalAttestations: number;
+}
+
 interface Mandate {
   mandateId: string;
   ico: string;
@@ -44,9 +54,10 @@ interface CurrentUserResponse {
 interface CompanyDashboardProps {
   companyName: string;
   ico: string;
+  summary?: DashboardSummary; // <-- PRIDAJ TOTO
 }
 
-export default function CompanyDashboard({ companyName, ico }: CompanyDashboardProps) {
+export default function CompanyDashboard({ companyName, ico, summary }: CompanyDashboardProps) {
   const [, setLocation] = useLocation();
   const { data: currentUser, activeContext } = useCurrentUser();
   const { toast } = useToast();
@@ -58,7 +69,7 @@ export default function CompanyDashboard({ companyName, ico }: CompanyDashboardP
 
   // Fetch contracts for the current user (context-aware)
   const { data: contracts } = useQuery<Contract[]>({
-    queryKey: QUERY_KEYS.contracts(activeContext),
+    queryKey: QUERY_KEYS.contracts(activeContext ?? null),
     enabled: !!currentUser,
   });
 
@@ -80,8 +91,6 @@ export default function CompanyDashboard({ companyName, ico }: CompanyDashboardP
   ) || [];
 
   // Calculate counts
-  const contractsCount = contracts?.length || 0;
-  const virtualOfficesCount = virtualOffices?.length || 0;
   const pendingTasksCount = pendingMandates.length + pendingVKInvitations.length;
 
   // Accept mandate mutation
@@ -155,8 +164,8 @@ export default function CompanyDashboard({ companyName, ico }: CompanyDashboardP
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{contractsCount}</div>
-            <p className="text-xs text-muted-foreground">Celkový počet zmlúv</p>
+            <div className="text-2xl font-bold">{summary?.contractsToSign ?? 0}/{summary?.signedContracts ?? 0}</div>
+            <p className="text-xs text-muted-foreground">Na podpis / Podpísané</p>
           </CardContent>
         </Card>
 
@@ -170,8 +179,8 @@ export default function CompanyDashboard({ companyName, ico }: CompanyDashboardP
             <Briefcase className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{virtualOfficesCount}</div>
-            <p className="text-xs text-muted-foreground">Aktívne kancelárie</p>
+            <div className="text-2xl font-bold">{summary?.openOffices ?? 0}/{summary?.completedOffices ?? 0}</div>
+            <p className="text-xs text-muted-foreground">Aktívne / Dokončené</p>
           </CardContent>
         </Card>
 

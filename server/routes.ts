@@ -2,7 +2,7 @@ import express, { type Express, type Request, type Response, type NextFunction }
 import { createServer, type Server } from "http";
 import passport from "passport";
 import multer from "multer";
-import { storage, listApiKeys, type InsertSavedAttestation, type SavedAttestation, type VerificationStatus } from "./storage"; // Pridali sme typy pre uložené doložky
+import { storage, listApiKeys, type InsertSavedAttestation, type SavedAttestation, type VerificationStatus, type DashboardSummary } from "./storage"; // Pridali sme typy pre uložené doložky
 import { insertVirtualOfficeSchema, insertContractSchema, apiKeys, contracts } from "@shared/schema"; // Pridané
 import type { User } from "./auth";
 import { authenticateApiKey } from './middleware'; 
@@ -176,6 +176,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     req.session.activeContext = contextId;
     res.json({ success: true, contextId });
+  });
+
+  // Dashboard summary (personal or company context)
+  app.get("/api/dashboard/summary", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const userId = (req.user as User).id;
+      // TOTO PRIDÁVAME:
+      const activeContext = req.session.activeContext || 'personal';
+
+      // Posielame oba údaje do storage:
+      const summary: DashboardSummary = await storage.getDashboardSummary(userId, activeContext);
+
+      res.status(200).json(summary);
+
+    } catch (error) {
+      console.error('[API] Error fetching dashboard summary:', error);
+      res.status(500).json({ error: "Failed to fetch dashboard summary" });
+    }
   });
 
   // --- eGarant: Saved Attestations (Archive) ---
