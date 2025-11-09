@@ -59,7 +59,7 @@ const personalNavItems: NavItem[] = [
     path: "/",
   },
   {
-    label: "Moje zmluvy",
+    label: "Moje dokumenty",
     icon: FileText,
     path: "/moje-zmluvy",
   },
@@ -83,7 +83,7 @@ const companyNavItems: NavItem[] = [
     path: "/",
   },
   {
-    label: "Firemné zmluvy",
+    label: "Firemné dokumenty",
     icon: FileText,
     path: "/moje-zmluvy",
   },

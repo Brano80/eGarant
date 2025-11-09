@@ -542,21 +542,66 @@ export class MemStorage implements IStorage {
       }
     }
 
-    // 2. Filtrujeme všetky zmluvy
+    // 2. Filtrujeme všetky zmluvy podľa kontextu
     const allContracts = Array.from(this.contracts.values());
+    const filtered = finalOwnerCompanyId
+      ? allContracts.filter((contract) => contract.ownerCompanyId === finalOwnerCompanyId)
+      : (userEmail ? allContracts.filter((contract) => contract.ownerEmail === userEmail && !contract.ownerCompanyId) : []);
 
-    if (finalOwnerCompanyId) {
-      // Firemný kontext: Vrátime len zmluvy vlastnené touto firmou
-      return allContracts.filter(
-        (contract) => contract.ownerCompanyId === finalOwnerCompanyId
-      );
-    } else {
-      // Osobný kontext: Vrátime len zmluvy vlastnené týmto používateľom (cez email)
-      if (!userEmail) return []; // Nemalo by nastať, ak je prihlásený
-      return allContracts.filter(
-        (contract) => contract.ownerEmail === userEmail && !contract.ownerCompanyId
-      );
+    // 3. Pre každý kontrakt vypočítame "displayStatus" na základe prepojených dokumentov a podpisov
+    const augmented: Array<Contract & { displayStatus: 'Nezaradené' | 'Čaká na podpis' | 'Podpísané' }> = [];
+
+    for (const contract of filtered) {
+      try {
+        const docs = await this.getVirtualOfficeDocumentsByContractId(contract.id);
+
+        if (!docs || docs.length === 0) {
+          augmented.push({ ...contract, displayStatus: 'Nezaradené' });
+          continue;
+        }
+
+        let hasPending = false;
+        let hasSigned = false;
+
+        for (const doc of docs) {
+          const sigs = await this.getVirtualOfficeSignatures(doc.id);
+
+          // Ak dokument nemá žiadne podpisy, považujeme ho za čakajúci na podpis
+          if (!sigs || sigs.length === 0) {
+            hasPending = true;
+            break;
+          }
+
+          for (const s of sigs) {
+            if (s.status === 'PENDING') {
+              hasPending = true;
+              break;
+            }
+            if (s.status === 'SIGNED') {
+              hasSigned = true;
+            }
+          }
+
+          if (hasPending) break;
+        }
+
+        if (hasPending) {
+          augmented.push({ ...contract, displayStatus: 'Čaká na podpis' });
+        } else if (hasSigned) {
+          augmented.push({ ...contract, displayStatus: 'Podpísané' });
+        } else {
+          // Fallback: ak existujú dokumenty, ale žiadne SIGNED/PENDING (napr. REJECTED), označíme ako čakajúce
+          augmented.push({ ...contract, displayStatus: 'Čaká na podpis' });
+        }
+      } catch (err) {
+        console.warn(`[storage] Error computing displayStatus for contract ${contract.id}:`, err);
+        // Pri chybe vrátime kontrakt bez statusu (default na Nezaradené)
+        augmented.push({ ...contract, displayStatus: 'Nezaradené' });
+      }
     }
+
+    // Vrátime pole ako Contract[] (augmented obsahuje extra pole, preto vykonáme typový pretypovanie)
+    return augmented as unknown as Contract[];
   }
 
   async createContract(insertContract: InsertContract): Promise<Contract> {

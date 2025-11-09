@@ -7,15 +7,21 @@ import { X } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
 import { useToast } from '@/hooks/use-toast';
-import type { Contract } from '@shared/schema';
+import type { Contract as BaseContract } from '@shared/schema';
+// Rozšírime lokálny typ Contract o displayStatus, ktorý vracia server cez storage.getContractsByContext
+interface Contract extends BaseContract {
+  // PRIDAJ TENTO RIADOK:
+  displayStatus: 'Nezaradené' | 'Čaká na podpis' | 'Podpísané';
+}
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, ArrowLeft, Plus, BadgeCheck, Clock as BadgeClock } from 'lucide-react';
+import { Loader2, ArrowLeft, Plus, BadgeCheck, Clock as BadgeClock, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'wouter';
 import { Badge } from '@/components/ui/badge';
 
 export function ContractListPage() {
   const { data: currentUser, activeContext } = useCurrentUser();
+  // statický titulok - vraciame späť na 'Moje zmluvy'
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null);
   const queryClient = useQueryClient();
   // OPRAVA: Čítame priamo z 'window.location.search' pre spoľahlivé čítanie query paramov
@@ -54,14 +60,14 @@ export function ContractListPage() {
           <ArrowLeft className="mr-2 h-4 w-4" />
           Späť na menu
         </Link>
-        <Button>
+        <Button onClick={() => setLocation('/create-document')}>
           <Plus className="mr-2 h-4 w-4" />
           Vytvoriť novú zmluvu
         </Button>
       </div>
 
       {/* Názov stránky */}
-      <h1 className="text-3xl font-bold tracking-tight mb-6">Moje zmluvy</h1>
+  <h1 className="text-3xl font-bold tracking-tight mb-6">Moje zmluvy</h1>
 
       {/* add-to-vk mode: no debug banner shown */}
 
@@ -149,13 +155,17 @@ function ContractCard({ contract, onPreview, vkIdToAddTo }: { contract: Contract
     },
     onSuccess: async () => {
       if (vkIdToAddTo) {
-        // Obnovíme dáta pre VK, do ktorej ideme
+        // 1. Obnovíme dáta pre VK, do ktorej ideme
         await queryClient.refetchQueries({ queryKey: QUERY_KEYS.virtualOffice(vkIdToAddTo) });
 
-        // OBNOVÍME AJ DASHBOARD (TOTO JE NOVÁ OPRAVA)
+        // 2. OBNOVÍME AJ DASHBOARD (TOTO JE KĽÚČOVÁ OPRAVA)
         await queryClient.refetchQueries({ queryKey: ['/api/dashboard/summary'] });
 
-        // Až potom presmerujeme
+        // 3. Obnovíme Knižnicu (aby sa zmenil status z "Nezaradené")
+        const activeContext = queryClient.getQueryData<any>(['/api/current-user'])?.activeContext || null;
+        await queryClient.refetchQueries({ queryKey: QUERY_KEYS.contracts(activeContext) });
+
+        // 4. Až potom presmerujeme
         setLocation(`/virtual-office/${vkIdToAddTo}`);
       }
     },
@@ -167,12 +177,12 @@ function ContractCard({ contract, onPreview, vkIdToAddTo }: { contract: Contract
   return (
     <div 
       className={`bg-card border rounded-lg p-4 flex items-center justify-between shadow-sm 
-        ${vkIdToAddTo ? 'cursor-pointer transition-shadow hover:shadow-md' : ''}
+        ${vkIdToAddTo && contract.displayStatus === 'Nezaradené' ? 'cursor-pointer transition-shadow hover:shadow-md' : 'cursor-default'}
         ${addContractToVKMutation.isPending ? 'pointer-events-none opacity-60' : ''}
       `}
           onClick={() => {
-        // Spusti mutáciu, IBA ak sme v 'add' režime
-        if (vkIdToAddTo) {
+        // Spusti mutáciu, IBA AK sme v 'add' režime A dokument je 'Nezaradené'
+        if (vkIdToAddTo && contract.displayStatus === 'Nezaradené') {
           addContractToVKMutation.mutate();
         }
       }}
@@ -188,17 +198,26 @@ function ContractCard({ contract, onPreview, vkIdToAddTo }: { contract: Contract
         </p>
       </div>
       <div className="flex items-center space-x-4">
-        {isPending ? (
+        {/* === NOVÝ BLOK PRE BADGE === */}
+        {contract.displayStatus === 'Nezaradené' && (
+          <Badge variant="secondary">
+            <FileText className="mr-2 h-4 w-4" />
+            Nezaradené
+          </Badge>
+        )}
+        {contract.displayStatus === 'Čaká na podpis' && (
           <Badge variant="outline" className="text-orange-500">
             <BadgeClock className="mr-2 h-4 w-4" />
             Čaká na podpis
           </Badge>
-        ) : (
+        )}
+        {contract.displayStatus === 'Podpísané' && (
           <Badge variant="outline" className="text-green-600">
             <BadgeCheck className="mr-2 h-4 w-4" />
             Podpísané
           </Badge>
         )}
+        {/* === KONIEC NOVÉHO BLOKU === */}
         <div className="flex items-center gap-2">
           <Button 
             variant="ghost" 

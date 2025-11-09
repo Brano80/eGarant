@@ -361,12 +361,12 @@ export default function VirtualOfficeDetailPage() {
             </div>
             <Button
               size="sm"
-              variant="outline"
+              variant="default"
               onClick={() => setLocation(`/moje-zmluvy?add-to-vk=${id}`)}
-              data-testid="button-upload-document"
+              data-testid="button-add-existing-contract"
             >
               <Upload className="mr-2 h-4 w-4" />
-              Pridať existujúcu zmluvu
+              Pridať dokument
             </Button>
           </div>
         </CardHeader>

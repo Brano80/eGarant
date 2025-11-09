@@ -57,8 +57,7 @@ export default function CreateUploadDocument() {
       // 1. Vynútime OKAMŽITÉ znovunačítanie zmlúv
        await queryClient.refetchQueries({ queryKey: QUERY_KEYS.contracts(ctx) });
 
-      // 2. Vynútime OKAMŽITÉ znovunačítanie dashboardu
-      await queryClient.refetchQueries({ queryKey: ['/api/dashboard/summary'] });
+      // 2. Dashboard už neobnovujeme (tým pádom sa počítadlo 0/0 nezmení)
 
       // 3. AŽ POTOM presmerujeme
       setLocation('/moje-zmluvy');
