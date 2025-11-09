@@ -529,80 +529,78 @@ export class MemStorage implements IStorage {
   }
 
   async getContractsByContext(userId: string, activeContext: string): Promise<Contract[]> {
-    // Získame email používateľa pre prípad osobného kontextu
-    const user = await this.getUser(userId);
-    const userEmail = user?.email;
+  // Získame email používateľa pre prípad osobného kontextu
+  const user = await this.getUser(userId);
+  const userEmail = user?.email;
 
-    // 1. Určíme ID firemného vlastníka podľa kontextu
-    let finalOwnerCompanyId: string | null = null;
-    if (activeContext !== 'personal') {
-      const activeMandate = await this.getUserMandate(activeContext);
-      if (activeMandate) {
-        finalOwnerCompanyId = activeMandate.companyId;
-      }
+  // 1. Určíme ID firemného vlastníka podľa kontextu
+  let finalOwnerCompanyId: string | null = null;
+  if (activeContext !== 'personal') {
+    const activeMandate = await this.getUserMandate(activeContext);
+    if (activeMandate) {
+      finalOwnerCompanyId = activeMandate.companyId;
     }
-
-    // 2. Filtrujeme všetky zmluvy podľa kontextu
-    const allContracts = Array.from(this.contracts.values());
-    const filtered = finalOwnerCompanyId
-      ? allContracts.filter((contract) => contract.ownerCompanyId === finalOwnerCompanyId)
-      : (userEmail ? allContracts.filter((contract) => contract.ownerEmail === userEmail && !contract.ownerCompanyId) : []);
-
-    // 3. Pre každý kontrakt vypočítame "displayStatus" na základe prepojených dokumentov a podpisov
-    const augmented: Array<Contract & { displayStatus: 'Nezaradené' | 'Čaká na podpis' | 'Podpísané' }> = [];
-
-    for (const contract of filtered) {
-      try {
-        const docs = await this.getVirtualOfficeDocumentsByContractId(contract.id);
-
-        if (!docs || docs.length === 0) {
-          augmented.push({ ...contract, displayStatus: 'Nezaradené' });
-          continue;
-        }
-
-        let hasPending = false;
-        let hasSigned = false;
-
-        for (const doc of docs) {
-          const sigs = await this.getVirtualOfficeSignatures(doc.id);
-
-          // Ak dokument nemá žiadne podpisy, považujeme ho za čakajúci na podpis
-          if (!sigs || sigs.length === 0) {
-            hasPending = true;
-            break;
-          }
-
-          for (const s of sigs) {
-            if (s.status === 'PENDING') {
-              hasPending = true;
-              break;
-            }
-            if (s.status === 'SIGNED') {
-              hasSigned = true;
-            }
-          }
-
-          if (hasPending) break;
-        }
-
-        if (hasPending) {
-          augmented.push({ ...contract, displayStatus: 'Čaká na podpis' });
-        } else if (hasSigned) {
-          augmented.push({ ...contract, displayStatus: 'Podpísané' });
-        } else {
-          // Fallback: ak existujú dokumenty, ale žiadne SIGNED/PENDING (napr. REJECTED), označíme ako čakajúce
-          augmented.push({ ...contract, displayStatus: 'Čaká na podpis' });
-        }
-      } catch (err) {
-        console.warn(`[storage] Error computing displayStatus for contract ${contract.id}:`, err);
-        // Pri chybe vrátime kontrakt bez statusu (default na Nezaradené)
-        augmented.push({ ...contract, displayStatus: 'Nezaradené' });
-      }
-    }
-
-    // Vrátime pole ako Contract[] (augmented obsahuje extra pole, preto vykonáme typový pretypovanie)
-    return augmented as unknown as Contract[];
   }
+
+  // 2. Filtrujeme všetky zmluvy pre daný kontext
+  const allContractsInContext = Array.from(this.contracts.values()).filter(
+    (contract) => {
+      if (finalOwnerCompanyId) {
+        return contract.ownerCompanyId === finalOwnerCompanyId;
+      } else if (userEmail) {
+        return contract.ownerEmail === userEmail && !contract.ownerCompanyId;
+      }
+      return false;
+    }
+  );
+
+  // --- ZAČIATOK NOVEJ LOGIKY ---
+  // 3. Pre každú zmluvu zistíme jej "displayStatus"
+
+  // Načítame všetky dokumenty a podpisy (pre efektívnosť)
+  const allDocs = Array.from(this.virtualOfficeDocuments.values());
+  const allSigs = Array.from(this.virtualOfficeSignatures.values());
+
+  const result = allContractsInContext.map(contract => {
+    // Nájdi všetky dokumenty vo VK, ktoré patria tejto zmluve
+    const docsInVK = allDocs.filter(doc => doc.contractId === contract.id);
+
+    if (docsInVK.length === 0) {
+      // KROK 1: Zmluva nie je v žiadnej VK
+      return { ...contract, displayStatus: 'Nezaradené' } as unknown as Contract;
+    }
+
+    // Zmluva je v aspoň jednej VK, skontrolujeme statusy
+    let isSigned = true; // Predpokladáme, že je podpísaná
+
+    for (const doc of docsInVK) {
+      const docSigs = allSigs.filter(sig => sig.virtualOfficeDocumentId === doc.id);
+
+      if (docSigs.length === 0) {
+        // Dokument je vo VK, ale nemá priradené žiadne podpisy? (Zvláštne, ale rátajme ako pending)
+        isSigned = false; 
+        break;
+      }
+
+      if (docSigs.some(sig => sig.status === 'PENDING')) {
+        // KROK 2: Našli sme aspoň 1 čakajúci podpis
+        isSigned = false;
+        break;
+      }
+    }
+
+    if (isSigned) {
+      // KROK 4: Všetky podpisy vo všetkých VK sú 'SIGNED'
+      return { ...contract, displayStatus: 'Podpísané' } as unknown as Contract;
+    } else {
+      // KROK 3: Zmluva je vo VK a čaká na podpis
+      return { ...contract, displayStatus: 'Čaká na podpis' } as unknown as Contract;
+    }
+  });
+
+  return result as unknown as Contract[];
+  // --- KONIEC NOVEJ LOGIKY ---
+}
 
   async createContract(insertContract: InsertContract): Promise<Contract> {
     const id = randomUUID();

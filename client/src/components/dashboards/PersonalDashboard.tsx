@@ -258,8 +258,8 @@ export default function PersonalDashboard() {
 
         <Card 
           className="cursor-pointer transition-all hover-elevate active-elevate-2"
-          onClick={() => setLocation('/my-documents')}
-          data-testid="card-my-documents"
+          onClick={() => setLocation('/e-documents')}
+          data-testid="card-e-documents"
         >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">E-dokumenty</CardTitle>

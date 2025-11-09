@@ -60,19 +60,10 @@ const personalNavItems: NavItem[] = [
   },
   {
     label: "Moje dokumenty",
-    icon: FileText,
-    path: "/moje-zmluvy",
-  },
-  {
-    label: "Moje e-dokumenty",
     icon: FolderOpen,
     path: "/my-documents",
   },
-  {
-    label: "Virtuálna kancelária",
-    icon: Briefcase,
-    path: "/virtual-office",
-  },
+  // POLOŽKA "Moje zmluvy" BOLA ÚMYSLNE ODSTRÁNENÁ Z OSOBNÉHO PROFILU
 ];
 
 // Navigation items for company profile
@@ -89,8 +80,8 @@ const companyNavItems: NavItem[] = [
   },
   {
     label: "E-dokumenty",
-    icon: FolderOpen,
-    path: "/my-documents",
+    icon: ShieldCheck,
+    path: "/e-documents",
   },
   {
     label: "Virtuálna kancelária",

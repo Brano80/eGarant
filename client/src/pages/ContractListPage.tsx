@@ -42,6 +42,11 @@ export function ContractListPage() {
     enabled: !!currentUser,
   });
 
+  // 2. KĽÚČOVÁ OPRAVA: Filtrujeme dokumenty, ktoré patria do Knižnice (displayStatus 'Nezaradené')
+  const activeContracts = contracts?.filter(contract => 
+    contract.displayStatus !== 'Nezaradené'
+  ) ?? [];
+
   // (No parent-level add mutation any more; the card will handle adding when vkIdToAddTo is present)
 
   if (isLoading) {
@@ -73,10 +78,10 @@ export function ContractListPage() {
 
       {/* Zoznam zmlúv */}
       <div className="space-y-4">
-        {!contracts || contracts.length === 0 ? (
+        {!activeContracts || activeContracts.length === 0 ? (
           <p className="text-muted-foreground text-center py-8">Zatiaľ nemáte vytvorené žiadne zmluvy.</p>
         ) : (
-          contracts.map(contract => (
+          activeContracts.map(contract => (
             <ContractCard key={contract.id} contract={contract} onPreview={setSelectedContract} vkIdToAddTo={vkIdToAddTo} />
           ))
         )}

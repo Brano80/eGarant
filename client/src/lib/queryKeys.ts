@@ -5,6 +5,8 @@ export const QUERY_KEYS = {
   virtualOffice: (id: string) => [`/api/virtual-offices/${id}`],
   // Kľúč pre zoznam uložených doložiek
   attestations: () => ['/api/attestations'] as const,
+  // Kľúč pre Knižnicu dokumentov (Moje dokumenty)
+  documents: (contextId: string | null) => ['/api/documents', contextId] as const,
 } as const;
 
 export const OWNER_EMAIL = 'jan.novak@example.com';

@@ -11,6 +11,7 @@ import Home from "@/pages/Home";
 import SelectProfile from "@/pages/SelectProfile";
 import SelectCompany from "@/pages/SelectCompany";
 import MyDocuments from "@/pages/MyDocuments";
+import EDocumentsPage from "@/pages/EDocumentsPage";
 import MyContracts from "@/pages/MyContracts";
 import CompanyList from "@/pages/CompanyList";
 import AddCompanyForm from "@/pages/AddCompanyForm";
@@ -51,6 +52,11 @@ function Router() {
       <Route path="/my-documents">
         <PrivateRoute>
           <MyDocuments />
+        </PrivateRoute>
+      </Route>
+      <Route path="/e-documents">
+        <PrivateRoute>
+          <EDocumentsPage />
         </PrivateRoute>
       </Route>
       <Route path="/moje-zmluvy">

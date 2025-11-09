@@ -362,7 +362,7 @@ export default function VirtualOfficeDetailPage() {
             <Button
               size="sm"
               variant="default"
-              onClick={() => setLocation(`/moje-zmluvy?add-to-vk=${id}`)}
+              onClick={() => setLocation(`/my-documents?add-to-vk=${id}`)}
               data-testid="button-add-existing-contract"
             >
               <Upload className="mr-2 h-4 w-4" />

@@ -47,20 +47,16 @@ export default function CreateUploadDocument() {
         title: contractTitle,
         type: 'custom',
         content: JSON.stringify(contractContent),
-        ownerEmail: currentUser?.email || '',
+        ownerEmail: currentUser?.email || ''
       });
     },
     onSuccess: async () => {
-  // Získame aktuálny kontext
-  const ctx = activeContext ?? null;
+      // After creating a draft document, refresh the contracts list so the library shows it.
+      const ctx = activeContext ?? null;
+      await queryClient.refetchQueries({ queryKey: QUERY_KEYS.contracts(ctx) });
 
-      // 1. Vynútime OKAMŽITÉ znovunačítanie zmlúv
-       await queryClient.refetchQueries({ queryKey: QUERY_KEYS.contracts(ctx) });
-
-      // 2. Dashboard už neobnovujeme (tým pádom sa počítadlo 0/0 nezmení)
-
-      // 3. AŽ POTOM presmerujeme
-      setLocation('/moje-zmluvy');
+      // Redirect the user to the library page
+      setLocation('/my-documents');
     },
   });
 
