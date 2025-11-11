@@ -17,6 +17,18 @@ A B2B SaaS API for verifying corporate mandates (e.g., "is this person a CEO?") 
 
 ➡️ **[Click here for the full MandateCheck API documentation and prototype guide](./MandateCheck_README.md)**
 
+Notes (current prototype state):
+- The endpoint `POST /api/v1/verify-mandate` now performs a real HTTP POST to the official EUDI Verifier Sandbox.
+- For the wallet callback to work when using a public tunnel/Codespace, set `PUBLIC_CODESPACE_URL` in your `.env` (or export it in the shell) to your public URL (e.g., `https://your-name.trycloudflare.com`).
+
+Environment setup:
+- Copy the sample environment file and adjust values as needed:
+
+```bash
+cp .env.sample .env
+# then edit .env and set PUBLIC_CODESPACE_URL to your public URL
+```
+
 ---
 
 ## 2. eGarant Platform (Core)

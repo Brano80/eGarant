@@ -34,18 +34,18 @@ MandateCheck API handles the rest:
 3.  **Verification:** Cross-references the verified identity from the wallet with the list of legal representatives from the registry.
 4.  **Simple Response:** Returns a clear, trusted, and auditable answer: `{"status": "verified"}` or `{"status": "not_verified"}`.
 
-## ⚠️ Current Status: Functional Prototype
+## ⚠️ Current Status: Functional Prototype (real verifier call, simulated wallet)
 
 This repository contains a **functional end-to-end prototype (MVP)**.
 
 It successfully implements the full asynchronous API flow as described in the EUDI Wallet reference implementations (including the use of `OpenID4VP`, `dcql_query`, `request_uri`, `state`, and `vp_token`).
 
-However, key external components are currently **simulated**:
+External integrations status:
 
-  * **EUDI Sandbox:** The initial call to the EUDI Sandbox/Verifier to get a `request_uri` is **mocked**. We simulate the expected response.
-  * **EUDI Wallet:** The callback from the EUDI Wallet is **simulated** using a NodeJS test script (`test_callback.js`) that mimics the wallet sending data to our public tunnel.
+  * **EUDI Sandbox/Verifier:** The initiation call in `/api/v1/verify-mandate` now performs a **real HTTP POST** to the EUDI Verifier endpoint (`https://verifier-backend.eudiw.dev/ui/presentations`).
+  * **EUDI Wallet:** The wallet callback is still **simulated** using a NodeJS test script (`test_callback.js`) that mimics the wallet sending data to our public tunnel.
 
-The system is ready for the next phase: integrating with the live EUDI Sandbox and testing with the official EUDI reference wallet application.
+The system is ready for the next phase: validating the flow with the official EUDI reference wallet application.
 
 ## Architecture & Tech Stack
 
@@ -122,13 +122,18 @@ npm run dev
 
 ### Step 4: Configure the Backend
 
-1.  Open `server/routes.ts`.
-2.  Find the `MY_PUBLIC_CALLBACK_BASE_URL` constant inside the `/api/v1/verify-mandate` endpoint.
-3.  Paste your **new public URL** from Terminal 3 into this constant.
-    ```typescript
-    const MY_PUBLIC_CALLBACK_BASE_URL = "https://[YOUR-UNIQUE-NAME].trycloudflare.com";
-    ```
-4.  **Save** the file.
+Set the public base URL for callbacks via environment variable. No code edits are needed.
+
+1. Copy the public URL from your tunnel (e.g., `https://[YOUR-UNIQUE-NAME].trycloudflare.com`).
+2. Export it as `PUBLIC_CODESPACE_URL` before starting the server (or put it into `.env`).
+
+Examples:
+
+```bash
+export PUBLIC_CODESPACE_URL="https://[YOUR-UNIQUE-NAME].trycloudflare.com"
+npm run build
+node -r dotenv/config dist/index.js
+```
 
 ### Step 5: Re-Build and Re-Start the Backend
 
@@ -146,7 +151,9 @@ npm run build
 node -r dotenv/config dist/index.js
 ```
 
-### Step 6: Test the Flow
+### Step 6: Test the Flow (two options)
+
+Option A: Manual end-to-end
 
 1.  **Open the Frontend:** Go to `http://localhost:5173/` in your browser.
 2.  **Start Verification:** Enter an IČO (e.g., `54321098` for a "Verified" test, `12345678` for a "Not\_Verified" test) and click "Spustiť overenie mandátu".
@@ -155,11 +162,26 @@ node -r dotenv/config dist/index.js
       * Open the file `test_callback.js`.
       * Paste the **new Transaction ID** into the `transactionId` constant.
       * Save the file.
-      * In a new terminal (or Terminal 3 after stopping the tunnel, though you need it running), run the script:
-        ```powershell
+      * Run the script:
+        ```bash
         node test_callback.js
         ```
 5.  **Observe Result:** The browser should automatically update to show a **VERIFIED** or **NOT\_VERIFIED** status.
+
+Option B: Automated health-check (no browser)
+
+1. Run the backend on http://localhost:3000 (with `PUBLIC_CODESPACE_URL` set).
+2. Execute the health-check script to exercise all endpoints:
+
+```bash
+npm run mc:health
+```
+
+The script will:
+- POST `/api/v1/verify-mandate` (with `X-API-Key`) and parse the `transactionId` and `requestUri`.
+- GET `/api/v1/request-object/:id`.
+- POST `/api/v1/verify-callback` with a simulated `vp_token`.
+- Poll GET `/api/v1/verify-status/:id` until it returns a final status or times out.
 
 ## API Flow & Endpoints
 
@@ -189,7 +211,7 @@ This prototype implements the full asynchronous OpenID4VP flow:
 
 ## Roadmap & Future Work
 
-  * **Step 1 (Real Initiation):** Replace the mock call in `/verify-mandate` with a real `fetch` call to the official EUDI Wallet Sandbox API.
+  * **Step 1 (Real Initiation):** DONE — `/verify-mandate` already calls the official EUDI Verifier Sandbox.
   * **Step 2 (Authentication):** Implement JAR (JWT Secured Authorization Request) signing using a Relying Party certificate/keystore to authenticate our backend against the Sandbox.
   * **Step 3 (Real Callback):** Update `/verify-callback` to parse and cryptographically validate the *real* `vp_token` (Verifiable Presentation / JWT) received from the official EUDI reference wallet.
   * **Step 4 (Registry Connectors):** Replace the mock registry in `server/storage.ts` with a real API client for the Slovak Business Register (OR SR).

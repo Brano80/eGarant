@@ -1282,7 +1282,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`[API /request-object] Peňaženka žiada request object pre ID/state: ${id}`); 
 
       const mockJwtPayload = {
-        iss: "https://hired-island-crossing-fitted.trycloudflare.com", // TODO: Update if tunnel changes
+        iss: process.env.PUBLIC_CODESPACE_URL || "https://stunning-goldfish-7vwqjqqwxvj4295j-3000.app.github.dev",
         aud: "EUDIWallet", 
         response_type: "vp_token",
         response_mode: "direct_post",
