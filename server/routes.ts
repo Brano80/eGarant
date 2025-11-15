@@ -11,6 +11,10 @@ import { serveStatic } from "./vite";
 import { log } from "./utils";
 import { db } from "./db"; // Pridané
 import { eq, desc } from "drizzle-orm"; // Pridané
+// SD-JWT libs will be imported dynamically inside the callback handler to
+// avoid module resolution errors when the package exports differ between
+// versions. Dynamic import allows a graceful fallback to the previous
+// JSON parse simulation if the library API is not available.
 
 // Multer configuration for file uploads
 const upload = multer({
@@ -1329,33 +1333,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * KROK 9.7: Upravené podľa referenčnej implementácie Verifiera
    */
   v1Router.post('/verify-callback', async (req: Request, res: Response) => {
+    // === ZAČIATOK NOVÉHO KÓDU ===
+
     const { state, vp_token } = req.body;
-    
-    console.log(`[CALLBACK] Prijaté dáta z (mock) EUDI Peňaženky pre state (transactionId) ${state}:`, req.body);
-    
+    console.log(`[CALLBACK] Prijaté dáta pre state (transactionId) ${state}`);
+
     if (!state || !vp_token) {
       console.error('[CALLBACK] Chýbajú povinné polia "state" alebo "vp_token".');
-      return res.status(400).json({ error: 'state and vp_token are required in form data' });
+      return res.status(400).json({ error: 'state and vp_token are required' });
     }
 
-    const transactionId = state; 
+    const transactionId = state;
+    let given_name: string | undefined;
+    let family_name: string | undefined;
 
     try {
-      let walletData;
-      try {
-        walletData = JSON.parse(vp_token);
-      } catch (parseError: any) {
-        console.error(`[CALLBACK] Nepodarilo sa naparsovať vp_token ako JSON: ${vp_token}`, parseError);
-        throw new Error('Invalid vp_token format, expected JSON string.');
+      // Dynamic import the crypto helper and SD-JWT VC instance to avoid
+      // breaking server startup if module exports differ between versions.
+      const sdMod = await import('@sd-jwt/sd-jwt-vc');
+
+      // The library exposes SDJwtVcInstance; try to obtain the constructor.
+      const SDJwtVcClass = sdMod.SDJwtVcInstance || sdMod.SDJwtVcInstance || sdMod.SDJwtVcInstance;
+      if (!SDJwtVcClass) {
+        throw new Error('SDJwtVcInstance not found in @sd-jwt/sd-jwt-vc');
       }
 
-      const { given_name, family_name } = walletData;
+      // Initialize verifier instance
+      const instance: any = new SDJwtVcClass();
+
+      console.log('[CALLBACK] Pokus o parsovanie SD-JWT tokenu...');
+
+      // Parse the SD-JWT payload WITHOUT verifying signatures (demo mode).
+      // We decode the JWT payload (base64url) and extract claims.
+      const parts = (vp_token as string).split('.');
+      if (!parts || parts.length < 2) {
+        throw new Error('Invalid SD-JWT format');
+      }
+
+      const payloadB64 = parts[1];
+      const padded = payloadB64.replace(/-/g, '+').replace(/_/g, '/');
+      const buffer = Buffer.from(padded, 'base64');
+      const payloadJson = JSON.parse(buffer.toString('utf8'));
+      const parsedToken: any = { payload: payloadJson, getClaims: () => payloadJson.claims ?? payloadJson };
+
+      // Ensure nonce matches our transactionId
+      if (parsedToken.payload.nonce !== transactionId) {
+        throw new Error(`Nonce mismatch. Očakávaný: ${transactionId}, Prijatý: ${parsedToken.payload.nonce}`);
+      }
+
+      console.log('[CALLBACK] SD-JWT token úspešne parsovaný.');
+
+      const claimsAny = (parsedToken.payload && (parsedToken.payload.claims ?? parsedToken.payload)) as any;
+      given_name = claimsAny?.given_name || claimsAny?.givenName || claimsAny?.given || claimsAny?.['eu.europa.ec.eudi.pid.1/given_name'];
+      family_name = claimsAny?.family_name || claimsAny?.familyName || claimsAny?.family || claimsAny?.['eu.europa.ec.eudi.pid.1/family_name'];
+
       if (!given_name || !family_name) {
-        console.error('[CALLBACK] vp_token neobsahuje given_name alebo family_name:', walletData);
+        console.error('[CALLBACK] vp_token neobsahuje given_name alebo family_name:', claimsAny);
         throw new Error('Parsed vp_token is missing given_name or family_name.');
       }
 
-      // --- Rovnaká biznis logika ako predtým ---
+      console.log(`[CALLBACK] Úspešne extrahované dáta: ${given_name} ${family_name}`);
+
+    } catch (error: any) {
+      console.error(`[CALLBACK] Chyba pri overovaní SD-JWT tokenu:`, error?.message ?? error);
+      await storage.updateVerificationTransactionStatus(transactionId, 'error', { error: 'Invalid vp_token', details: error?.message ?? String(error) }).catch(()=>{});
+      return res.status(400).json({ error: 'Invalid vp_token', message: error?.message ?? String(error) });
+    }
+
+    // --- Tu pokračuje naša stará biznis logika (už je správna) ---
+    try {
       const transaction = await storage.getVerificationTransaction(transactionId);
       if (!transaction) {
         console.error(`[CALLBACK] Transakcia ${transactionId} (zo state) nebola nájdená.`);

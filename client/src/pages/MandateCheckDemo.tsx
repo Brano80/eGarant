@@ -55,16 +55,58 @@ export default function MandateCheckDemo() {
     return () => clearInterval(intervalId);
   }, [transactionId, verificationStatus]);
 
-  // === Simulation helpers (for local testing) ===
+  // === NOVÝ KÓD PRE SIMULÁCIU ===
+
+  // Toto je falošný, ale štrukturálne platný SD-JWT token.
+  // Tento token *nie je* kryptograficky podpísaný, ale prejde naším
+  // demo overením (kde máme checkSignatures: false).
+  // Dôležité: Obsahuje 'nonce', ktorý sa musí zhodovať!
+  const createMockSdJwt = (givenName: string, familyName: string, nonce: string) => {
+    // 1. Hlavička (Header)
+    const header = { alg: 'ES256', typ: 'vc+sd-jwt' };
+    
+    // 2. Telo (Payload) - obsahuje 'nonce' a 'claims'
+    const payload = {
+      iss: 'https://fake-issuer.example.com',
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 3600,
+      nonce: nonce, // Kľúčové: Posielame 'nonce' (našu transactionId)
+      claims: {
+        given_name: givenName,
+        family_name: familyName,
+        // V reálnom svete by tu boli aj 'disclosures' (SD)
+      }
+    };
+
+    // 3. Falošný podpis
+    const signature = 'fake-signature-part';
+
+    // Funkcia na Base64URL enkódovanie (teraz UTF-8 bezpečná)
+    const base64UrlEncode = (data: object) => {
+      const stringData = JSON.stringify(data);
+      // Konvertujeme UTF-8 string na Base64 a potom na Base64URL
+      const base64 = btoa(unescape(encodeURIComponent(stringData)));
+      return base64.replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
+    };
+
+    // Spojíme to do falošného JWT
+    return `${base64UrlEncode(header)}.${base64UrlEncode(payload)}.${signature}`;
+  };
+
+  // Funkcia na simuláciu ÚSPEŠNÉHO overenia
   const simulateSuccess = async () => {
-    console.log(`[Simulácia] Posielam ÚSPEŠNÝ callback pre ${transactionId}`);
+    console.log(`[Simulácia] Posielam FAKE SD-JWT (Úspech) pre ${transactionId}`);
+    
+    // Vytvoríme falošný SD-JWT s menom Ján Nováček a správnym 'nonce'
+    const mockVpToken = createMockSdJwt('Ján', 'Nováček', transactionId || '');
+
     try {
       await fetch('/api/v1/verify-callback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           state: transactionId,
-          vp_token: JSON.stringify({ given_name: 'Ján', family_name: 'Nováček' })
+          vp_token: mockVpToken 
         })
       });
     } catch (error) {
@@ -72,21 +114,27 @@ export default function MandateCheckDemo() {
     }
   };
 
+  // Funkcia na simuláciu NEÚSPEŠNÉHO overenia
   const simulateFailure = async () => {
-    console.log(`[Simulácia] Posielam NEÚSPEŠNÝ callback pre ${transactionId}`);
+    console.log(`[Simulácia] Posielam FAKE SD-JWT (Zlyhanie) pre ${transactionId}`);
+    
+    // Vytvoríme falošný SD-JWT s menom Peter Zlý a správnym 'nonce'
+    const mockVpToken = createMockSdJwt('Peter', 'Zlý', transactionId || '');
+    
     try {
       await fetch('/api/v1/verify-callback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           state: transactionId,
-          vp_token: JSON.stringify({ given_name: 'Peter', family_name: 'Zlý' })
+          vp_token: mockVpToken
         })
       });
     } catch (error) {
       console.error('Simulácia zlyhala:', error);
     }
   };
+  // === KONIEC NOVÉHO KÓDU ===
 
   const handleVerify = async (e?: React.FormEvent) => {
     e?.preventDefault();
