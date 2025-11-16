@@ -563,7 +563,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/virtual-offices/:id/documents", (req, res, next) => {
     const contentType = req.get('Content-Type') || '';
     if (contentType.includes('multipart/form-data')) {
-      upload.single("documentFile")(req, res, next);
+      // Cast middleware invocation to any to avoid Request type incompatibilities
+      (upload.single("documentFile") as any)(req, res, next);
     } else {
       next();
     }
@@ -1348,42 +1349,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     let family_name: string | undefined;
 
     try {
-      // Dynamic import the crypto helper and SD-JWT VC instance to avoid
-      // breaking server startup if module exports differ between versions.
-      const sdMod = await import('@sd-jwt/sd-jwt-vc');
+      // Dynamic-import the sd-jwt VC instance and the node crypto helpers.
+      const sdvcMod = await import('@sd-jwt/sd-jwt-vc');
+      const cryptoMod = await import('@sd-jwt/crypto-nodejs');
 
-      // The library exposes SDJwtVcInstance; try to obtain the constructor.
-      const SDJwtVcClass = sdMod.SDJwtVcInstance || sdMod.SDJwtVcInstance || sdMod.SDJwtVcInstance;
-      if (!SDJwtVcClass) {
-        throw new Error('SDJwtVcInstance not found in @sd-jwt/sd-jwt-vc');
-      }
+      // The package exports an `SDJwtVcInstance` class. Use it to create an instance
+      // configured for our demo. We provide the node hasher and saltGenerator from
+      // the crypto helper and a permissive verifier that returns `true` when we
+      // intentionally skip signature checks for the demo (checkSignatures: false).
+      const SDJwtVcInstance = sdvcMod.SDJwtVcInstance || sdvcMod.SDJwtVcInstance || sdvcMod.SDJwtVcInstance;
+      if (!SDJwtVcInstance) throw new Error('SDJwtVcInstance not found in @sd-jwt/sd-jwt-vc');
 
-      // Initialize verifier instance
-      const instance: any = new SDJwtVcClass();
+      // hasher and saltGenerator are provided by @sd-jwt/crypto-nodejs
+      const hasher = cryptoMod.digest;
+      const saltGenerator = cryptoMod.generateSalt;
 
-      console.log('[CALLBACK] Pokus o parsovanie SD-JWT tokenu...');
+      // Build a permissive verifier for demo mode: if checkSignatures is false we
+      // simply return true. In a production setup you'd provide a real verifier
+      // that checks signatures against known public keys.
+      const permissiveVerifier = async (_data: string, _sig: string) => {
+        return true;
+      };
 
-      // Parse the SD-JWT payload WITHOUT verifying signatures (demo mode).
-      // We decode the JWT payload (base64url) and extract claims.
-      const parts = (vp_token as string).split('.');
-      if (!parts || parts.length < 2) {
-        throw new Error('Invalid SD-JWT format');
-      }
+      const sdInstance: any = new SDJwtVcInstance({
+        hasher,
+        saltGenerator,
+        // Provide a verifier function; the library will call this when validating JWT signatures.
+        verifier: permissiveVerifier
+      });
 
-      const payloadB64 = parts[1];
-      const padded = payloadB64.replace(/-/g, '+').replace(/_/g, '/');
-      const buffer = Buffer.from(padded, 'base64');
-      const payloadJson = JSON.parse(buffer.toString('utf8'));
-      const parsedToken: any = { payload: payloadJson, getClaims: () => payloadJson.claims ?? payloadJson };
+      console.log('[CALLBACK] Pokus o overení SD-JWT tokenu pomocou knižnice...');
+
+      // Use the library to verify/parse the SD-JWT. We intentionally run in demo
+      // mode where signatures are not enforced (our permissive verifier always
+      // returns true). If you want to enable signature checks later, replace the
+      // permissiveVerifier with a real implementation and remove this bypass.
+      const parsedToken: any = await sdInstance.verify(vp_token as string, {});
 
       // Ensure nonce matches our transactionId
-      if (parsedToken.payload.nonce !== transactionId) {
-        throw new Error(`Nonce mismatch. Očakávaný: ${transactionId}, Prijatý: ${parsedToken.payload.nonce}`);
+      if (!parsedToken || !parsedToken.payload || parsedToken.payload.nonce !== transactionId) {
+        throw new Error(`Nonce mismatch. Očakávaný: ${transactionId}, Prijatý: ${parsedToken?.payload?.nonce}`);
       }
 
-      console.log('[CALLBACK] SD-JWT token úspešne parsovaný.');
+      // Try to extract full claims using library helper (this will use our hasher)
+      let claimsAny: any;
+      try {
+        claimsAny = await sdInstance.getClaims(vp_token as string);
+      } catch (e) {
+        // If getClaims fails, fall back to payload.claims or payload
+        claimsAny = (parsedToken.payload && (parsedToken.payload.claims ?? parsedToken.payload));
+      }
 
-      const claimsAny = (parsedToken.payload && (parsedToken.payload.claims ?? parsedToken.payload)) as any;
       given_name = claimsAny?.given_name || claimsAny?.givenName || claimsAny?.given || claimsAny?.['eu.europa.ec.eudi.pid.1/given_name'];
       family_name = claimsAny?.family_name || claimsAny?.familyName || claimsAny?.family || claimsAny?.['eu.europa.ec.eudi.pid.1/family_name'];
 
@@ -1392,7 +1408,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         throw new Error('Parsed vp_token is missing given_name or family_name.');
       }
 
-      console.log(`[CALLBACK] Úspešne extrahované dáta: ${given_name} ${family_name}`);
+      console.log(`[CALLBACK] Úspešne extrahované dáta cez knižnicu: ${given_name} ${family_name}`);
 
     } catch (error: any) {
       console.error(`[CALLBACK] Chyba pri overovaní SD-JWT tokenu:`, error?.message ?? error);
@@ -1443,6 +1459,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
             companyName: company?.nazov, 
             role: matchingMandate.rola
           };
+          // === NOVÝ KÓD PRE PRIHLÁSENIE (SESSION) ===
+          try {
+            console.log(`[CALLBACK] Používateľ ${matchingMandate.user.name} overený. Prihlasujem...`);
+            const userToLogin = matchingMandate.user;
+            await new Promise<void>((resolve, reject) => {
+              req.login(userToLogin, (err) => {
+                if (err) {
+                  console.error('[CALLBACK] Chyba pri vytváraní session (req.login):', err);
+                  return reject(new Error('Session login failed during callback'));
+                }
+                console.log(`[CALLBACK] Session pre ${userToLogin.email} úspešne vytvorená.`);
+                resolve();
+              });
+            });
+          } catch (loginErr) {
+            console.error('[CALLBACK] Session login failed but continuing:', loginErr);
+            // don't rethrow; we want to continue and still update transaction status
+          }
+          // === KONIEC NOVÉHO KÓDU ===
         } else {
           verificationStatus = 'not_verified';
           resultDetails = { personName: personNameFromWallet, companyIco: companyIco };

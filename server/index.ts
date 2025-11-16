@@ -14,23 +14,23 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-app.use(
-  session({
-    secret:
-      process.env.SESSION_SECRET ||
-      "default-dev-secret-change-in-production",
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      secure: process.env.NODE_ENV === "production",
-      httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000,
-    },
-  })
-);
+// Cast middleware results to `any` to avoid TypeScript overload mismatch
+// errors caused by duplicate express type definitions in some environments.
+app.use((session({
+  secret:
+    process.env.SESSION_SECRET ||
+    "default-dev-secret-change-in-production",
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === "production",
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000,
+  },
+}) as unknown) as any);
 
-app.use(passport.initialize());
-app.use(passport.session());
+app.use((passport.initialize() as unknown) as any);
+app.use((passport.session() as unknown) as any);
 
 setupPassport();
 
