@@ -1264,12 +1264,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(500).json({ error: 'Failed to connect to EUDI Sandbox', message: fetchError.message });
       }
 
-      // 6. Vrátime odpoveď nášmu frontendu (používame reálnu odpoveď verifierResponse)
+      // 6. Vrátime odpoveď nášmu frontendu (posielame naše LOKÁLNE ID)
       res.status(200).json({
-        transactionId: verifierResponse.transaction_id,
+        transactionId: transactionId,
         requestUri: verifierResponse.request_uri,
         requestUriMethod: verifierResponse.request_uri_method,
-        localTransactionId: transactionId,
+        _eudiTransactionId: verifierResponse.transaction_id,
       });
 
     } catch (error: any) {
@@ -1400,8 +1400,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         claimsAny = (parsedToken.payload && (parsedToken.payload.claims ?? parsedToken.payload));
       }
 
-      given_name = claimsAny?.given_name || claimsAny?.givenName || claimsAny?.given || claimsAny?.['eu.europa.ec.eudi.pid.1/given_name'];
-      family_name = claimsAny?.family_name || claimsAny?.familyName || claimsAny?.family || claimsAny?.['eu.europa.ec.eudi.pid.1/family_name'];
+      const extractedClaims = claimsAny?.claims ?? claimsAny ?? {};
+      given_name = extractedClaims?.given_name || extractedClaims?.givenName || extractedClaims?.given || extractedClaims?.['eu.europa.ec.eudi.pid.1/given_name'];
+      family_name = extractedClaims?.family_name || extractedClaims?.familyName || extractedClaims?.family || extractedClaims?.['eu.europa.ec.eudi.pid.1/family_name'];
 
       if (!given_name || !family_name) {
         console.error('[CALLBACK] vp_token neobsahuje given_name alebo family_name:', claimsAny);

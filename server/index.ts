@@ -11,6 +11,10 @@ import { storage } from "./storage";
 import { setupPassport } from "./auth";
 
 const app = express();
+// Trust the first reverse proxy (Codespaces / Cloud IDE) so secure cookies work
+// when the app is behind a proxy that terminates TLS. This allows
+// `cookie.secure = true` to function correctly when proxied from HTTPS.
+app.set('trust proxy', 1);
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 

@@ -8,9 +8,10 @@ import { Loader2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
 type VerifyMandateResponse = {
+  transactionId: string;
   requestUri: string;
-  transactionId?: string;
-  localTransactionId?: string;
+  requestUriMethod?: string;
+  _eudiTransactionId?: string;
 };
 
 export default function MandateCheckDemo() {
@@ -53,7 +54,7 @@ export default function MandateCheckDemo() {
     onSuccess: (data: VerifyMandateResponse) => {
       console.log("EUDI Sandbox odpovedal:", data);
       setQrData(data.requestUri);
-      setTransactionId(data.transactionId || data.localTransactionId || null); // Upravené pre Copilotov fix
+      setTransactionId(data.transactionId);
       setIsLoading(false);
     },
     onError: (err: any) => {
@@ -124,7 +125,7 @@ export default function MandateCheckDemo() {
 
   // Chýbajúca funkcia, ktorú volajú tlačidlá
   const simulateCallback = async (givenName: string, familyName: string, expectedIco: string) => {
-    const currentIco = (document.getElementById('ico-input') as HTMLInputElement)?.value;
+    const currentIco = ico?.trim();
     if (currentIco !== expectedIco) {
       alert(`Chyba: Toto prihlásenie funguje iba pre IČO ${expectedIco}. Zadané IČO je ${currentIco}.`);
       return;

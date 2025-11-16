@@ -1,7 +1,7 @@
+import path from "path";
+import { fileURLToPath } from "url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import path from 'path';
-import { fileURLToPath } from 'url';
 
 // --- Defines __dirname for ES Modules ---
 const __filename = fileURLToPath(import.meta.url);
@@ -17,7 +17,7 @@ export default defineConfig({
   resolve: {
     alias: {
       // Cesty pre importy
-      "@": path.resolve(__dirname, "client", "src"),
+      "@": path.resolve(__dirname, "./client/src"),
       "@shared": path.resolve(__dirname, "shared"),
       "@assets": path.resolve(__dirname, "attached_assets"),
     },
